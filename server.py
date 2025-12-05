@@ -87,14 +87,28 @@ while True:
                 if data:
                     data = data.decode('utf-8').strip()
                     print(f'data: [{data}]')
-                    msg = str(sock.getpeername()) + ': ' + data
-                    ## Recivo mensaje y escribo en documento
-                    ## deberia aplicar operacion de transformacion
-                    pending_changes.insert(msg)
+                    
+                    #Obtengo el mensaje y saco su tipo
+                    msg = json.loads(data)
+                    msg_type = msg.get("type")
 
-                    log.insert(msg)
+                    if msg_type == "OP":
+                        op = msg.get("op")
+                        new_doc = apply_op(doc, op)
 
-                    pending_changes.remove(msg)
+                        if (new_doc != doc):
+                            doc = new_doc
+                            revision = revision + 1
+
+
+                    else:
+                        print(f"El tipo del mensaje no coincide {msg_type}")
+
+                    # pending_changes.insert(data)
+
+                    # log.insert(data)
+
+                    # pending_changes.remove(data)
                     
                     
                     #doc = doc[:pos] + msg + doc[pos:]
