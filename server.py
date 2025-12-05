@@ -36,8 +36,14 @@ def send_document_client(sock, addr):
 # Manda la operacion realizada a todos los clientes (excepto el que la envio)
 def broadcast (msg):
     data = json.dumps(msg) + "\n"
+    for sock in server_socket:
+        if sock is server_socket:
+            continue
+        try: 
+            sock.send(data.encode('utf-8'))
+        except:
+            print(f"Error al enviar al cliente")
 
-    return 0
 
 # envia el mensaje 
 def send ():
