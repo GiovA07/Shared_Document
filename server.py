@@ -34,7 +34,9 @@ def send_document_client(sock, addr):
         connections.remove(sock)
 
 # Manda la operacion realizada a todos los clientes (excepto el que la envio)
-def broadcast ():
+def broadcast (msg):
+    data = json.dumps(msg) + "\n"
+
     return 0
 
 # envia el mensaje 
@@ -42,8 +44,18 @@ def send ():
     return 0
 
 # aplica la operacion recibida el documento
-def apply():
-    return 0
+def apply_op(document, op):
+    kind    = op.get("kind")
+    pos     = op.get("pos")
+
+    if kind == "insert":
+        return 0
+    
+    elif kind == "delete":
+        return 0
+
+    else: #operacion que no existe
+        return 0
 
 
 
