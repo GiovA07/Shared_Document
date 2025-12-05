@@ -2,7 +2,7 @@ import socket, select
 import json
 
 HOST = ""
-PORT = 7777
+PORT = 7773
 
 doc = "Bienvenidos"                #documento 
 revision = 0            #numero de revision
@@ -11,7 +11,7 @@ log = []                # lista de operaciones
 pending_changes = []    #Operaciones pendientes
 
 #  {
-#    "type": "DOC_STATE | OPERATION"
+#    "type": "DOC_TYPE | OPERATION"
 #    "doc": doc}
 #    "op": {"kind": "insert", "pos": "7", "msg": "hola"},
 #     "revision": 1,
@@ -20,12 +20,12 @@ pending_changes = []    #Operaciones pendientes
 
 def send_document_client(sock, addr):
     json_data = {
-        "type": "DOC_STATE",
+        "type": "DOC_TYPE",
         "doc": doc,
         "revision": revision,
     }
 
-    data = json.dumps(json_data) + "\n"
+    data = json.dumps(json_data)
     try:
         sock.send(data.encode('utf-8'))
     except:
@@ -34,35 +34,30 @@ def send_document_client(sock, addr):
         connections.remove(sock)
 
 # Manda la operacion realizada a todos los clientes (excepto el que la envio)
-def broadcast (msg):
-    data = json.dumps(msg) + "\n"
-    for sock in server_socket:
-        if sock is server_socket:
+def broadcast (msg, socket_invalid):
+    data = json.dumps(msg)
+    for sock in connections:
+        if sock is server_socket or sock is socket_invalid:
             continue
         try: 
             sock.send(data.encode('utf-8'))
         except:
             print(f"Error al enviar al cliente")
 
-
-# envia el mensaje 
-def send ():
-    return 0
-
 # aplica la operacion recibida el documento
 def apply_op(document, op):
     kind    = op.get("kind")
-    pos     = op.get("pos")
+    pos     = int(op.get("pos"))
+    msg     = op.get("msg")
 
     if kind == "insert":
-        return 0
+        return document[:pos] + msg + document[pos:]
     
     elif kind == "delete":
-        return 0
+        return document[:pos] + document[pos+1:]
 
     else: #operacion que no existe
         return 0
-
 
 
 
@@ -72,7 +67,6 @@ server_socket.listen()
 
 # Add server socket to the list of readable connections
 connections.append(server_socket)
-print(f"Chat server started on {server_socket} ")
 
 while True:
     # Get the list sockets which are ready to be read through select
@@ -98,21 +92,28 @@ while True:
                     msg = json.loads(data)
                     msg_type = msg.get("type")
 
-                    if msg_type == "OP":
+                    if msg_type == "operator":
                         op = msg.get("op")
+                        print(op)
+
                         new_doc = apply_op(doc, op)
+                        print(new_doc)
 
                         if (new_doc != doc):
                             doc = new_doc
                             revision = revision + 1
 
+                            operator_msg = {
+                                "type": "operator",
+                                "revision": revision,
+                                "op": op,
+                                
+                            }
+                            broadcast(operator_msg,sock)
+
 
                     else:
                         print(f"El tipo del mensaje no coincide {msg_type}")
-
-                    # pending_changes.insert(data)
-
-                    # log.insert(data)
 
                     # pending_changes.remove(data)
                     
@@ -125,10 +126,11 @@ while True:
                     #    connections.remove(sock)
             except:
                 print(f"Client {addr} disconnected")
-                broadcast(sock, f"Client {addr} is offline")
                 sock.close()
                 connections.remove(sock)
     
+
+
 
 
 

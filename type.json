@@ -1,0 +1,11 @@
+{
+  "type": "DOC_STATE | OPERATION",
+  "doc": " ",
+  "op": {
+    "kind": "insert",
+    "pos": "7",
+    "msg": "hola"
+    },
+  "revision": 1,
+  "cliente": null
+}
