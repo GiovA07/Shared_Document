@@ -1,11 +1,21 @@
+// Cliente --> Servidor
 {
-  "type": "DOC_STATE | OPERATION",
-  "doc": " ",
+  "type": "operator",
+  "base_revision": 3,
   "op": {
     "kind": "insert",
-    "pos": "7",
-    "msg": "hola"
-    },
-  "revision": 1,
-  "cliente": null
+    "pos": 5,
+    "msg": "X"
+  }
+}
+
+// Cliente --> Servidor
+{
+  "type": "operator",
+  "revision": 4,
+  "op": {
+    "kind": "insert",
+    "pos": 7,
+    "msg": "X"
+  }
 }

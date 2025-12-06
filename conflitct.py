@@ -59,18 +59,21 @@ def attack_client(client_id, char_to_insert, position, operation):
            
             if msg_type == "DOC_TYPE":
                 doc_copy = data_json.get("DOC")
-
                 print(f"---- Document {client_id} ------ \n {doc_copy}")
-
+                
+                
                 # aplico la operacion localmente 
                 if operation == "delete":
                     doc_copy = doc_copy[:position] + doc_copy[position + 1:]
                 else:
                     doc_copy = doc_copy[:position] + char_to_insert + doc_copy[position:]
 
+                
                 print(f"---- El {client_id}, aplico localmente {operation} en la pos {position} ------ \n {doc_copy}")  
 
             ## recibo operacion del servidor indica que otro cliente modifico 
+            
+            
             elif msg_type == "OPERATOR": 
                 op_msg = data_json.get("OP")
                 pos = int(op_msg.get("POS"))

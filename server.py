@@ -10,14 +10,62 @@ connections = []        #sockets conectados
 log = []                # lista de operaciones
 pending_changes = []    #Operaciones pendientes
 
-#  {
-#    "TYPE": "DOC_TYPE | OP_COMMIT |  OPERATION | ACK"
-#    "doc": doc}
-#    "op": {"kind": "insert", "pos": "7", "msg": "hola"},
-#     "revision": 1,
-#     "cliente": PORT
-#   }
 
+def tii(op1, op2):
+    p1 = int(op1.get("POS"))
+    p2 = int(op2.get("POS"))
+    if p1 < p2 or p1 == p2:
+        return op1
+    else:
+        op1["POS"] = p1 + 1
+        return op1
+
+def tid(op1, op2):
+    p1 = int(op1["POS"])
+    p2 = int(op2["POS"])
+    if p1 <= p2:
+        return op1
+    else:
+        op1["POS"] = p1 - 1
+        return op1
+
+def tdi(op1, op2):
+    p1 = int(op1["POS"])
+    p2 = int(op2["POS"])
+    if p1 < p2:
+        return op1
+    else:
+        op1["POS"] = p1 + 1
+        return op1
+
+def tdd(op1, op2):
+    p1 = int(op1["POS"])
+    p2 = int(op2["POS"])
+    if p1 < p2:
+        return op1
+    elif p1 > p2:
+        op1["POS"] = p1 - 1
+        return op1
+    else:
+        return None
+
+def transform(op1, op2):
+    if op1 is None:
+        return None
+
+    k1 = op1.get("KIND")
+    k2 = op2.get("KIND")
+
+    if k1 == "insert" and k2 == "insert":
+        return tii(op1, op2)
+    elif k1 == "insert" and k2 == "delete":
+        return tid(op1, op2)
+    elif k1 == "delete" and k2 == "insert":
+        return tdi(op1, op2)
+    elif k1 == "delete" and k2 == "delete":
+        return tdd(op1, op2)
+    else:
+        return op1
 
 
 def send_msg (sock, msg):
@@ -40,7 +88,12 @@ def send_document_client(sock):
 # aplica la operacion recibida el documento
 def apply_op(document, op):
     kind    = op.get("KIND")
-    pos     = int(op.get("POS"))
+    pos     = op.get("POS")
+    try:
+        pos = int(pos)
+    except (TypeError, ValueError):
+        return document
+
 
     if kind == "insert":
         msg = op.get("MSG")
@@ -55,9 +108,15 @@ def apply_op(document, op):
 
 # Manda la operacion realizada a todos los clientes (excepto el que la envio)
 def broadcast (msg, socket_invalid):
-    data = json.dumps(msg)
     for sock in connections:
-        if sock is server_socket or sock is socket_invalid:
+        if sock is server_socket:
+            continue
+        if sock is socket_invalid :
+            data = {
+                "TYPE": "ACK",
+                "REVISION": revision,
+            }
+            send_msg(sock, data)
             continue
         try: 
             send_msg(sock, msg)
@@ -101,14 +160,24 @@ while True:
 
                     if msg_type == "OPERATOR":
                         op = msg.get("OP")
-                        print(op)
+                        last_revision = msg.get("REVISION")
+                        print("op:", op, "BASE_REVISION:", last_revision)
+
+                        # aplicar transformador
+                        for operation in log:
+                            if(operation.get("REVISION") >  last_revision):
+                                op = transform(op, operation.get("OP"))
+                
                         new_doc = apply_op(doc, op)
+                        
+                        
+                        
                         print(new_doc)
 
                         if (new_doc != doc):
                             doc = new_doc
                             revision = revision + 1
-
+                            log.append({"REVISION": revision, "OP": op})
                             operator_msg = {
                                 "TYPE": "OPERATOR",
                                 "REVISION": revision,
@@ -121,15 +190,6 @@ while True:
                     else:
                         print(f"El tipo del mensaje no coincide {msg_type}")
 
-                    # pending_changes.remove(data)
-                    
-                    
-                    #doc = doc[:pos] + msg + doc[pos:]
-
-
-                    #broadcast(sock, msg)
-                    #if str(data) == 'quit':
-                    #    connections.remove(sock)
             except:
                 print(f"Client {addr} disconnected")
                 sock.close()
