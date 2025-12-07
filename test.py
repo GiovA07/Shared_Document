@@ -9,6 +9,7 @@ PORT = 7777
 def receive_full_json(sock):
     """Ayuda a recibir la respuesta completa del servidor"""
     try:
+
         data = sock.recv(4096)
         if not data: return None
         return json.loads(data.decode('utf-8'))
@@ -43,21 +44,21 @@ def run_test():
     op_a = {
         "TYPE": "OPERATOR",
         "REVISION": base_revision, # Rev 0
-        "OP": {"KIND": "insert", "POS": 2, "MSG": "X"}
+        "OP": {"KIND": "delete", "POS": 2}
     }
     print(f"\n[Cliente A] Enviando: Insertar 'HOLA ' en 0 (Basado en Rev {base_revision})")
     client_a.send(json.dumps(op_a).encode('utf-8'))
     
     # Damos un pequeño respiro para asegurar que el servidor procese a A primero
     # y aumente su revisión interna a 1.
-    time.sleep(0.5) 
+    time.sleep(0.1) 
 
     # 3. Cliente B envía su operación AHORA (pero con REVISIÓN VIEJA)
     # Esto forzará al servidor a usar tii()
     op_b = {
         "TYPE": "OPERATOR",
         "REVISION": base_revision, # SIGUE ENVIANDO 0 (STALE)
-        "OP": {"KIND": "insert", "POS": 4, "MSG": "W"}
+        "OP": {"KIND": "delete", "POS": 2}
     }
     print(f"[Cliente B] Enviando: Insertar 'CHAU ' en 0 (Basado en Rev {base_revision})")
     print(f"[Cliente B] (!) Esto debe causar conflicto porque el servidor ya debería ir por Rev {base_revision + 1}")
@@ -73,7 +74,9 @@ def run_test():
     # Vamos a leer un par de veces para limpiar el buffer
     try:
         response_1 = receive_full_json(client_a) # ACK de A
-        response_2 = receive_full_json(client_a) # ACK de B (Transformado)
+        print("Recive A")
+        response_2 = receive_full_json(client_b) # ACK de B (Transformado)
+        print("Recive B")
         
         print(f"Respuesta final recibida en A: {response_2}")
         
@@ -91,7 +94,10 @@ def run_test():
         print("No se pudo leer la respuesta final o timeout.")
 
     client_a.close()
+    print("cliente cerrado")
     client_b.close()
+    print("cliente cerrado B")
+    
 
 if __name__ == "__main__":
     run_test()

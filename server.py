@@ -1,230 +1,134 @@
 import socket, select
 import json
+from utils import transform, apply_op, send_msg, make_json
 
 HOST = "0.0.0.0"
 PORT = 7777
 
-doc = "Bienvenidos"                #documento 
-revision = 0            #numero de revision
-connections = []        #sockets conectados
-log = []                # lista de operaciones
-pending_changes = []    #Operaciones pendientes
+doc             = "Bienvenidos"     # Documento 
+revision        = 0            # Numero de revision
+connections     = []        # Sockets conectados
+log             = []                # Lista de operaciones
+pending_changes = []    # Operaciones pendientes
 
 
-def tii(op1, op2):
-    p1 = int(op1.get("POS"))
-    p2 = int(op2.get("POS"))
-    if p1 < p2 or p1 == p2:
-        return op1
-    else:
-        op1["POS"] = p1 + 1
-        return op1
-
-def tid(op1, op2):
-    p1 = int(op1["POS"])
-    p2 = int(op2["POS"])
-    if p1 <= p2:
-        return op1
-    else:
-        op1["POS"] = p1 - 1
-        return op1
-
-def tdi(op1, op2):
-    p1 = int(op1["POS"])
-    p2 = int(op2["POS"])
-    if p1 < p2:
-        return op1
-    else:
-        op1["POS"] = p1 + 1
-        return op1
-
-def tdd(op1, op2):
-    p1 = int(op1["POS"])
-    p2 = int(op2["POS"])
-    if p1 < p2:
-        return op1
-    elif p1 > p2:
-        op1["POS"] = p1 - 1
-        return op1
-    else:
-        return None
-
-def transform(op1, op2):
-    if op1 is None:
-        return None
-
-    k1 = op1.get("KIND")
-    k2 = op2.get("KIND")
-
-    if k1 == "insert" and k2 == "insert":
-        return tii(op1, op2)
-    elif k1 == "insert" and k2 == "delete":
-        return tid(op1, op2)
-    elif k1 == "delete" and k2 == "insert":
-        return tdi(op1, op2)
-    elif k1 == "delete" and k2 == "delete":
-        return tdd(op1, op2)
-    else:
-        return op1
-
-
-def send_msg (sock, msg):
-    data = json.dumps(msg)
-    try:
-        sock.send(data.encode('utf-8'))
-    except:
-        print(f"Error enviando documento\n")
-        sock.close()
-        connections.remove(sock)
-
+# ====== Envio de mensajes / helpers ======
 def send_document_client(sock):
-    json_data = {
-        "TYPE": "DOC_TYPE",
-        "DOC": doc,
-        "REVISION": revision,
-    }
+    json_data = make_json(type = "DOC_TYPE", rev = revision, doc = doc) 
     send_msg(sock, json_data)
 
-# aplica la operacion recibida el documento
-def apply_op(document, op):
-    kind    = op.get("KIND")
-    pos     = op.get("POS")
+def send_ack(sock):
+    data = make_json(type = "ACK", rev = revision)
     try:
-        pos = int(pos)
-    except (TypeError, ValueError):
-        return document
-
-
-    if kind == "insert":
-        msg = op.get("MSG")
-        return document[:pos] + msg + document[pos:]
-    
-    elif kind == "delete":
-        return document[:pos] + document[pos+1:]
-
-    else: #operacion que no existe
-        return document
-
+        send_msg(sock, data)
+    except:
+        print("Error al enviar ack")
+        sock.close()
+        if sock in connections:
+            connections.remove(sock)
 
 # Manda la operacion realizada a todos los clientes (excepto el que la envio)
 def broadcast (msg, socket_invalid):
-    for sock in connections:
+    for sock in list(connections):
         if sock is server_socket:
             continue
         if sock is socket_invalid :
-            data = {
-                "TYPE": "ACK",
-                "REVISION": revision,
-            }
-            send_msg(sock, data)
+            send_ack(sock)
             continue
-        try: 
+        try:
             send_msg(sock, msg)
         except:
-            print(f"Error al enviar al cliente")
-
-
-server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-server_socket.bind((HOST, PORT))
-server_socket.listen()
-
-# Add server socket to the list of readable connections
-connections.append(server_socket)
-while True:
-    # Get the list sockets which are ready to be read through select
-    read_sockets,write_sockets,error_sockets = select.select(connections,[],[])
-
-    for sock in read_sockets:
-        if sock == server_socket:
-            #New connection
-            sockfd, addr = server_socket.accept()
-            connections.append(sockfd)
-            print(f"Client {addr} connected")
-            try:
-                send_document_client(sockfd)
-            except Exception as e:
-                print(f"[!] Error enviando el Documento a {addr}: {e}")
-                connections.remove(sockfd)
-                sockfd.close()
-        else:
-            # Data received from some client, process it
-            try:
-                data = sock.recv(4096)
-                if data:
-                    data = data.decode('utf-8').strip()
-                    print(f'data: [{data}]')
-                    
-                    #Obtengo el mensaje y saco su tipo
-                    msg = json.loads(data)
-                    msg_type = msg.get("TYPE")
-
-                    if msg_type == "OPERATOR":
-                        op = msg.get("OP")
-                        last_revision = msg.get("REVISION")
-                        print("op:", op, "BASE_REVISION:", last_revision)
-
-                        # aplicar transformador
-                        for operation in log:
-                            if(operation.get("REVISION") >  last_revision):
-                                op = transform(op, operation.get("OP"))
-                
-                        new_doc = apply_op(doc, op)
-                        
-                        
-                        
-                        print(new_doc)
-
-                        if (new_doc != doc):
-                            doc = new_doc
-                            revision = revision + 1
-                            log.append({"REVISION": revision, "OP": op})
-                            operator_msg = {
-                                "TYPE": "OPERATOR",
-                                "REVISION": revision,
-                                "OP": op, 
-                            }
-                            broadcast(operator_msg,sock)
-                        else:
-                            print(f"La Operacion No cambio el Documento. IGNORADA")
-
-                    else:
-                        print(f"El tipo del mensaje no coincide {msg_type}")
-
-            except:
-                print(f"Client {addr} disconnected")
-                sock.close()
+            sock.close()
+            if sock in connections:
                 connections.remove(sock)
+            print(f"Error al enviar al cliente")
+            
+
+# ====== Eventos ======
+def handle_new_connection():
+    global connections
+    #New connection
+    sockfd, addr = server_socket.accept()
+    connections.append(sockfd)
+    print(f"Client {addr} connected")
+    try:
+        send_document_client(sockfd)
+    except Exception as e:
+        print(f"[!] Error enviando el Documento a {addr}: {e}")
+        connections.remove(sockfd)
+        sockfd.close()
+
+def handle_client(sock):
+    global doc, revision, log, connections
+    try:
+        data = sock.recv(4096)
+
+        if not data:
+            print("Client disconnected")
+            if sock in connections:
+                connections.remove(sock)
+            sock.close()
+            return
     
+        if data:
+            data = data.decode('utf-8').strip()
+            print(f'data: [{data}]')
+
+            #Obtengo el mensaje y saco su tipo
+            msg = json.loads(data)
+            msg_type = msg.get("TYPE")
+            if msg_type == "OPERATOR":
+                op = msg.get("OP")
+                last_revision = msg.get("REVISION")
+                print("op:", op, "BASE_REVISION:", last_revision)
+                
+                # aplicar transformador
+                for operation in log:
+                    if(operation.get("REVISION") >  last_revision):
+                        op = transform(op, operation.get("OP"))
+                        if op is None:
+                            break
+
+                new_doc = apply_op(doc, op)   
+
+                print(new_doc)
+
+                if (new_doc != doc):
+                    doc = new_doc
+                    revision = revision + 1
+                    log.append({"REVISION": revision, "OP": op})
+                    operator_msg = make_json(type = "OPERATOR", rev = revision, op = op)
+                    broadcast(operator_msg,sock)
+                else:
+                    send_ack(sock)
+                    print(f"La Operacion No cambio el Documento. IGNORADA")
+            else:
+                print(f"El tipo del mensaje no coincide {msg_type}")
+    except:
+        print(f"Client disconnected")
+        connections.remove(sock)
+        sock.close()
 
 
+def main():
+    global server_socket
+
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_socket.bind((HOST, PORT))
+    server_socket.listen()
+    connections.append(server_socket)
+
+    while True:
+        # Get the list sockets which are ready to be read through select
+        read_sockets,write_sockets,error_sockets = select.select(connections,[],[])
+
+        for sock in read_sockets:
+            if sock == server_socket:
+                handle_new_connection()
+            else:
+                # Data received from some client, process it
+                handle_client(sock)
 
 
-
-
-
-# Tii(Ins[p1, c1], Ins[p2, c2]) {
-#   if (p1 < p2) || ((p1 == p2) && (order() == -1))  // order() – order calculation
-# 	return Ins[p1, c1]; // Tii(Ins[3, ‘a’], Ins[4, ‘b’]) = Ins[3, ‘a’]
-#   else
-# 	return Ins[p1 + 1, c1]; // Tii(Ins[3, ‘a’], Ins[1, ‘b’]) = Ins[4, ‘a’]
-# }
-
-# Tid(Ins[p1, c1], Del[p2]) {
-#   if (p1 <= p2)
-#     return Ins[p1, c1]; // Tid(Ins[3, ‘a’], Del[4]) = Ins[3, ‘a’]
-#   else
-#     return Ins[p1 – 1, c1]; // Tid(Ins[3, ‘a’], Del[1]) = Ins[2, ‘a’]
-# }
-
-# Tdi(Del[p1], Ins[p2, c1]) {
-#   // Exercise
-# }
-
-# Tdd(Del[p1], Del[p2]) {
-#   if (p1 < p2)
-#     return Del[p1]; // Tdd(Del[3], Del[4]) = Del[3]
-#   else
-#     if (p1 > p2) return Del[p1 – 1]; // Tdd(Del[3], Del[1]) = Del[2]
-#   else
-#     return Id; // Id – identity operator
-# }
+if __name__ == "__main__":
+    main()
