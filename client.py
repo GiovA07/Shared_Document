@@ -5,7 +5,7 @@ import json
 from utils import transform, apply_op, send_msg, make_json
 
 HOST = "localhost"
-PORT = 7777
+PORT = 7773
 
 doc_copy = ""
 last_synced_revision = 0
@@ -21,6 +21,7 @@ def send_next_operation(sock):
         try:
             send_next = False
             send_msg(sock, json_msg)
+            print(f"[Cliente] Enviando operacion: {json_msg}")
         except Exception:
             print("ERROR al enviar al servidor")
             exit_loop = True
@@ -44,22 +45,28 @@ def handle_server_message(sock):
         if msg_type == "DOC_TYPE":
             doc_copy = data_json.get("DOC")
             last_synced_revision = data_json.get("REVISION", 0)
-            print("Documento actual: ")
-            print(doc_copy)
+            print("[Cliente] Documento compartido inicial: ")
+            print(f"  '{doc_copy}'")
+            print(f"  Revision: {last_synced_revision}")
+
         elif msg_type == "OPERATOR":
             op_msg = data_json.get("OP")
             last_synced_revision = data_json.get("REVISION")
+            print(f"\n[Cliente] Operacion del servidor: {op_msg} revision: {last_synced_revision}")
+
             for operation in pending_changes:
                 op_msg = transform(op_msg, operation.get("OP"))
                 if(op_msg is None):
                     break 
+            print(f"[Cliente] Operacion transformada: {op_msg}")
             doc_copy = apply_op(doc_copy, op_msg)
-            print("Nuevo documento: ", doc_copy)
+            print(f"[Cliente] Documento actualizado: '{doc_copy}'")
+
         elif msg_type == "ACK":
             # mandar otra opercion = desencolar de lista pendientes
             last_synced_revision = data_json.get("REVISION")
-            print("Se recibio el ACK")
-            pending_changes.pop(0)
+            op = pending_changes.pop(0)
+            print(f"\n[Cliente] ACK recibido para: {op})")
             send_next = True
             send_next_operation(sock)
         else:
@@ -95,8 +102,7 @@ def handle_client_input(sock):
         return
     
     doc_copy = apply_op(doc_copy, op)
-    print("Documento (local):")
-    print(doc_copy)
+    print(f"\n[Cliente] Documento local: {doc_copy}")
     json_op = make_json(type="OPERATOR", rev=last_synced_revision, op=op)
     pending_changes.append(json_op)
     send_next_operation(sock)
@@ -107,11 +113,11 @@ def main():
     s = socket(AF_INET, SOCK_STREAM)
     s.connect((HOST, PORT))
 
-    print("Comandos Validos:")
-    print("  insert <pos> <caracter>")
-    print("  insert <pos>  (agregar espacio en blanco)")
-    print("  delete <pos> ")
-    print("  exit")
+    print("\nComandos Válidos:")
+    print("  insert <pos> <texto>  - Insertar texto en posición")
+    print("  insert <pos>          - Insertar espacio en posición")
+    print("  delete <pos>          - Eliminar caracter en posición")
+    print("  exit                  - Salir\n")
     
     while not exit_loop:
         socket_list = [sys.stdin, s]
@@ -126,6 +132,7 @@ def main():
                 # user entered data by stdin
                 handle_client_input(s)
     s.close()
+    print("Cliente desconectado.")
 
 
 if __name__ == "__main__":

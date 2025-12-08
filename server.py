@@ -1,9 +1,10 @@
 import socket, select
 import json
+import time
 from utils import transform, apply_op, send_msg, make_json
 
 HOST = "0.0.0.0"
-PORT = 7777
+PORT = 7773
 
 doc             = "Bienvenidos"     # Documento 
 revision        = 0            # Numero de revision
@@ -72,12 +73,12 @@ def handle_client(sock):
     
         if data:
             data = data.decode('utf-8').strip()
-            print(f'data: [{data}]')
-
             #Obtengo el mensaje y saco su tipo
             msg = json.loads(data)
             msg_type = msg.get("TYPE")
+
             if msg_type == "OPERATOR":
+                time.sleep(10)
                 op = msg.get("OP")
                 last_revision = msg.get("REVISION")
                 print("op:", op, "BASE_REVISION:", last_revision)
@@ -87,10 +88,11 @@ def handle_client(sock):
                     if(operation.get("REVISION") >  last_revision):
                         op = transform(op, operation.get("OP"))
                         if op is None:
-                            break
+                            print("Operación anulada por OT. Envia solo ACK.")
+                            send_ack(sock)
+                            return
 
                 new_doc = apply_op(doc, op)   
-
                 print(new_doc)
 
                 if (new_doc != doc):
@@ -101,7 +103,7 @@ def handle_client(sock):
                     broadcast(operator_msg,sock)
                 else:
                     send_ack(sock)
-                    print(f"La Operacion No cambio el Documento. IGNORADA")
+                    print("La Operacion No cambio el Documento. IGNORADA")
             else:
                 print(f"El tipo del mensaje no coincide {msg_type}")
     except:
