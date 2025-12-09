@@ -55,11 +55,20 @@ def handle_server_message(sock):
             op_msg = data_json.get("OP")
             last_synced_revision = data_json.get("REVISION")
             print(f"\n[Cliente] Operacion del servidor: {op_msg} revision: {last_synced_revision}")
-
+            
+            new_pending_change = []
             for operation in pending_changes:
+                
+                update_pendin_change = transform(operation.get("OP"), op_msg)
+                if(update_pendin_change is not None):
+                    new_pending_change.append(make_json(type="OPERATOR", rev=last_synced_revision, op=update_pendin_change))
+
                 op_msg = transform(op_msg, operation.get("OP"))
                 if(op_msg is None):
                     break 
+
+            pending_changes = new_pending_change
+            
             print(f"[Cliente] Operacion transformada: {op_msg}")
             doc_copy = apply_op(doc_copy, op_msg)
             print(f"[Cliente] Documento actualizado: '{doc_copy}'")

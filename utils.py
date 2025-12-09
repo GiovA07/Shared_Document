@@ -31,8 +31,6 @@ def tii(op1, op2):
     p2 = int(op2.get("POS"))
     p1_id = op1.get("ID")
     p2_id = op2.get("ID")
-    print(p1_id)
-    print(p2_id)
 
     if p1 < p2 :
         return op1

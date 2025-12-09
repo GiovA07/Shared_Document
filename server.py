@@ -79,7 +79,7 @@ def handle_client(sock):
             msg_type = msg.get("TYPE")
 
             if msg_type == "OPERATOR":
-                time.sleep(10)
+                time.sleep(20)
                 op = msg.get("OP")
                 last_revision = msg.get("REVISION")
                 print("op:", op, "BASE_REVISION:", last_revision)
