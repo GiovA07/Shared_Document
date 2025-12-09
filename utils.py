@@ -23,16 +23,28 @@ def make_json (type = None, rev=None, op=None, doc=None):
 #   tid: transform insert vs delete
 #   tdi: transform delete vs insert
 #   tdd: transform delete vs delete
+# doc A insert A 0 => "A" Server => Doc A => "BA"
+# doc B insert B 0 => "B" Server => Doc B => "AB"
 
 def tii(op1, op2):
     p1 = int(op1.get("POS"))
     p2 = int(op2.get("POS"))
-    if p1 < p2 or p1 == p2:
+    p1_id = op1.get("ID")
+    p2_id = op2.get("ID")
+    print(p1_id)
+    print(p2_id)
+
+    if p1 < p2 :
         return op1
-    else:
+    elif p1 > p2:
         op1["POS"] = p1 + 1
         return op1
-
+    else:
+        if p1_id < p2_id:
+            return op1
+        else:
+            op1["POS"] = p1 + 1
+            return op1
 
 def tid(op1, op2):
     p1 = int(op1["POS"])

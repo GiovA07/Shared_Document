@@ -4,13 +4,13 @@ import time
 from utils import transform, apply_op, send_msg, make_json
 
 HOST = "0.0.0.0"
-PORT = 7773
+PORT = 7777
 
-doc             = "Bienvenidos"     # Documento 
-revision        = 0            # Numero de revision
-connections     = []        # Sockets conectados
-log             = []                # Lista de operaciones
-pending_changes = []    # Operaciones pendientes
+doc             = "Bienvenidos" # Documento 
+revision        = 0             # Numero de revision
+connections     = []            # Sockets conectados
+log             = []            # Lista de operaciones
+pending_changes = []            # Operaciones pendientes
 
 
 # ====== Envio de mensajes / helpers ======
@@ -30,6 +30,7 @@ def send_ack(sock):
 
 # Manda la operacion realizada a todos los clientes (excepto el que la envio)
 def broadcast (msg, socket_invalid):
+    print(f"\n Broadcast message => {msg} \n")
     for sock in list(connections):
         if sock is server_socket:
             continue

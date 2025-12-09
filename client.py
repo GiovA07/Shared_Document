@@ -5,7 +5,7 @@ import json
 from utils import transform, apply_op, send_msg, make_json
 
 HOST = "localhost"
-PORT = 7773
+PORT = 7777
 
 doc_copy = ""
 last_synced_revision = 0
@@ -18,6 +18,8 @@ def send_next_operation(sock):
     global send_next, exit_loop
     if send_next and pending_changes:
         json_msg = pending_changes[0]
+        ## acutalizo ultima revision  en base al ultimo ack
+        json_msg["REVISION"] = last_synced_revision
         try:
             send_next = False
             send_msg(sock, json_msg)
@@ -72,6 +74,30 @@ def handle_server_message(sock):
         else:
             print("Mensaje No Valido")
 
+def operations(sock, cmd, pos , msg = None):
+    global doc_copy, last_synced_revision, pending_changes 
+
+    op = {"KIND": cmd,"POS": pos}
+    
+    if(cmd == "delete" and msg != None):
+        print("Error delete <pos> <msg> INVALIDO")
+        return
+    
+    if(msg != None):
+        ## nesesario error de inserat en pos iguales
+        op["ID"] = sock.getsockname()[1]
+        op["MSG"] = msg
+
+    doc_copy = apply_op(doc_copy, op)
+    print(f"\n[Cliente] Documento local: {doc_copy}")
+    #print(f"\n{sock}\n")
+    # accedo al pueto me sirve como id del cliente solo sirve localmente
+    ##print(sock.getsockname()[1])
+    json_op = make_json(type="OPERATOR", rev=last_synced_revision, op=op)
+    pending_changes.append(json_op)
+    send_next_operation(sock)
+    return
+
 
 def handle_client_input(sock):
     global doc_copy, last_synced_revision, pending_changes, exit_loop
@@ -93,19 +119,13 @@ def handle_client_input(sock):
         (len(partes) == 3 or len(partes) == 2) ):
         pos = int(partes[1])
         msg_text = " " if len(partes) == 2 else partes[2]
-        op = {"KIND": cmd,"POS": pos,"MSG": msg_text,}
+        operations(sock, cmd, pos, msg_text)
     elif cmd == "delete" and len(partes) == 2 and partes[1].isdigit():
         pos = int(partes[1])
-        op = { "KIND": cmd, "POS": pos, }
+        operations(sock, cmd, pos)
     else:
         print("Comandos Invalido.")
         return
-    
-    doc_copy = apply_op(doc_copy, op)
-    print(f"\n[Cliente] Documento local: {doc_copy}")
-    json_op = make_json(type="OPERATOR", rev=last_synced_revision, op=op)
-    pending_changes.append(json_op)
-    send_next_operation(sock)
 
 def main():
     global exit_loop
