@@ -27,6 +27,7 @@ def make_json (type = None, rev=None, op=None, doc=None):
 # doc B insert B 0 => "B" Server => Doc B => "AB"
 
 def tii(op1, op2):
+    new = op1.copy()
     p1 = int(op1.get("POS"))
     p2 = int(op2.get("POS"))
     p1_id = op1.get("ID")
@@ -35,43 +36,46 @@ def tii(op1, op2):
     if p1 < p2 :
         return op1
     elif p1 > p2:
-        op1["POS"] = p1 + 1
+        new["POS"] = p1 + 1
         return op1
     else:
         if p1_id < p2_id:
-            return op1
+            return new
         else:
-            op1["POS"] = p1 + 1
-            return op1
+            new["POS"] = p1 + 1
+            return new
 
 def tid(op1, op2):
+    new = op1.copy()
     p1 = int(op1["POS"])
     p2 = int(op2["POS"])
     if p1 <= p2:
         return op1
     else:
-        op1["POS"] = p1 - 1
-        return op1
+        new["POS"] = p1 - 1
+        return new
 
 
 def tdi(op1, op2):
+    new = op1.copy()
     p1 = int(op1["POS"])
     p2 = int(op2["POS"])
     if p1 < p2:
-        return op1
+        return new
     else:
-        op1["POS"] = p1 + 1
-        return op1
+        new["POS"] = p1 + 1
+        return new
 
 
 def tdd(op1, op2):
+    new = op1.copy()
     p1 = int(op1["POS"])
     p2 = int(op2["POS"])
     if p1 < p2:
-        return op1
+        return new
     elif p1 > p2:
-        op1["POS"] = p1 - 1
-        return op1
+        new["POS"] = p1 - 1
+        return new
     else:
         return None
 
@@ -79,7 +83,6 @@ def tdd(op1, op2):
 def transform(op1, op2):
     if op1 is None:
         return None
-
     k1 = op1.get("KIND")
     k2 = op2.get("KIND")
 
@@ -92,7 +95,7 @@ def transform(op1, op2):
     elif k1 == "delete" and k2 == "delete":
         return tdd(op1, op2)
     else:
-        return op1
+        return op1.copy()
 
 
 def apply_op(document, op):
