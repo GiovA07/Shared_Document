@@ -60,8 +60,8 @@ def handle_server_message(sock):
 
             local_op = operation.get("OP")
 
-            operation["OP"] = transform(local_op, op_msg)
-            op_msg = transform(op_msg, local_op)
+            operation["OP"] = transform(local_op.copy(), op_msg)
+            op_msg = transform(op_msg.copy(), local_op)
 
         print(f"[Cliente] Operacion transformada: {op_msg}")
 
