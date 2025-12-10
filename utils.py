@@ -102,10 +102,19 @@ def apply_op(document, op):
     pos = int(op.get("POS"))
 
     if kind == "insert":
+        if pos < 0:
+            pos = 0
+            op["POS"] = 0
+        elif pos > len(document):
+            pos = len(document)
+            op["POS"] = len(document)
+            
         msg = op.get("MSG")
         return document[:pos] + msg + document[pos:]
 
     elif kind == "delete":
+        if pos < 0:
+            return document
         return document[:pos] + document[pos + 1 :]
 
     else:  # operacion que no existe
