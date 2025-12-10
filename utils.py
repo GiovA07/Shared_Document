@@ -37,7 +37,7 @@ def tii(op1, op2):
         return op1
     elif p1 > p2:
         new["POS"] = p1 + 1
-        return op1
+        return new
     else:
         if p1_id < p2_id:
             return new
