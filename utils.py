@@ -79,6 +79,8 @@ def tdd(op1, op2):
 def transform(op1, op2):
     if op1 is None:
         return None
+    if op2 is None:
+        return op1 
     k1 = op1.get("KIND")
     k2 = op2.get("KIND")
 

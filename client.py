@@ -7,15 +7,16 @@ from utils import transform, apply_op, send_msg, make_json
 HOST = "localhost"
 PORT = 7777
 
-doc_copy = ""
-last_synced_revision = 0
-pending_changes = []
-send_next = True
-exit_loop = False
+doc_copy = ""                   # documento local
+last_synced_revision = 0        # ultima revision conocida del servidor
+pending_changes = []            # lista de mensajes JSON de operaciones locales pendientes a enviar
+send_next = True                # indica si puedo mandar la proxima operacion
+exit_loop = False               # booleano para cortar el ciclo principal
 
 
 def send_next_operation(sock):
     global send_next, exit_loop
+
     if send_next and pending_changes:
         json_msg = pending_changes[0]
         try:
@@ -29,38 +30,44 @@ def send_next_operation(sock):
 
 def handle_server_message(sock):
     global doc_copy, last_synced_revision, send_next, pending_changes, exit_loop
+    
     data = sock.recv(1024)
-
     if not data:
-        print("Servidor desconectado")
+        print("[Cliente] Servidor desconectado")
         exit_loop = True
         sock.close()
         return
 
-    json_str = data.decode("utf-8")
-    data_json = json.loads(json_str)
+    data_json = json.loads(data.decode("utf-8"))
     msg_type = data_json.get("TYPE")
-    
+    # ---------- Documento inicial ----------
     if msg_type == "DOC_TYPE":
-        doc_copy = data_json.get("DOC")
+        doc_copy = data_json.get("DOC", "")
         last_synced_revision = data_json.get("REVISION", 0)
+
         print("[Cliente] Documento compartido inicial: ")
-        print(f"  '{doc_copy}'")
+        print(f"  {doc_copy}")
         print(f"  Revision: {last_synced_revision}")
 
+    # ---------- Operacion remota ----------
     elif msg_type == "OPERATOR":
         op_msg = data_json.get("OP")
         last_synced_revision = data_json.get("REVISION")
-        print(f"\n[Cliente] Operacion del servidor: {op_msg} revision: {last_synced_revision}")
+        print(f"\n[Cliente] Operacion del servidor: {op_msg} \n"
+              "revision: {last_synced_revision}")
 
-        # OT en el cliente:
+
         for operation in pending_changes:
             if op_msg is None:
                 break
 
             local_op = operation.get("OP")
-
+            if local_op is None:
+                continue
+            
+            # actualizo las operaciones que todavia no se enviaron
             operation["OP"] = transform(local_op.copy(), op_msg)
+            # actualizo la operacion que llego (remota)
             op_msg = transform(op_msg.copy(), local_op)
 
         print(f"[Cliente] Operacion transformada: {op_msg}")
@@ -72,8 +79,9 @@ def handle_server_message(sock):
         else:
             print("[Cliente] Operacion remota anulada, no se aplica.")
 
+    # ---------- ACK ----------
     elif msg_type == "ACK":
-        # mandar otra operacion = desencolar de lista pendientes
+        # mandar otra operacion y desencolar de lista pendientes
         last_synced_revision = data_json.get("REVISION")
         op = pending_changes.pop(0)
         print(f"\n[Cliente] ACK recibido para: {op})")
@@ -86,7 +94,8 @@ def handle_server_message(sock):
         send_next_operation(sock)
 
     else:
-        print("Mensaje No Valido")
+        print("[Cliente] Mensaje no valido enviado desde el servidor:", data_json)
+
 
 
 def operations(sock, cmd, pos , msg = None):
@@ -105,7 +114,7 @@ def operations(sock, cmd, pos , msg = None):
 
     doc_copy = apply_op(doc_copy, op)
     print(f"\n[Cliente] Documento local: {doc_copy}")
-
+    # Mensaje JSON para enviar al servidor
     json_op = make_json(type="OPERATOR", rev=last_synced_revision, op=op)
     pending_changes.append(json_op)
     send_next_operation(sock)
@@ -122,21 +131,24 @@ def handle_client_input(sock):
     
     partes = user_input.split(" ")
     if not partes:
-        print("Comando vacio")
+        print("[Cliente] Comando vacio")
         return
 
     cmd = partes[0]
-    if (cmd == "insert" and len(partes) >= 2 and partes[1].isdigit() and
-        (len(partes) == 3 or len(partes) == 2)):
+    # ----- insert -----
+    if (cmd == "insert" 
+        and len(partes) >= 2 and len(partes) <= 3 and partes[1].isdigit()):
+
         pos = int(partes[1])
         msg_text = " " if len(partes) == 2 else partes[2]
         operations(sock, cmd, pos, msg_text)
-
+   
+    # ----- delete -----
     elif cmd == "delete" and len(partes) == 2 and partes[1].isdigit():
         pos = int(partes[1])
         operations(sock, cmd, pos)
     else:
-        print("Comandos Invalido.")
+        print("[Cliente] Comando invalido.")
         return
 
 
@@ -163,7 +175,7 @@ def main():
                 handle_client_input(s)
 
     s.close()
-    print("Cliente desconectado.")
+    print("[Cliente] Cliente desconectado.")
 
 
 if __name__ == "__main__":
