@@ -86,7 +86,7 @@ def handle_client(sock):
                 op = msg.get("OP")
                 base_revision = msg.get("REVISION")
 
-                print("op:", op, "BASE_REVISION:", base_revision)
+                print("[Cliente] Operacion :", op, "BASE_REVISION:", base_revision)
                 
                 # aplicar transformador
                 for operation in op_log:
@@ -130,8 +130,8 @@ def main():
     server_socket.listen()
     connections.append(server_socket)
 
-    print(f"[Server] Escuchando en {HOST}:{PORT}")
-    print(f"[Server] Documento inicial: '{doc}' (rev={revision})")
+    print(f"[Servidor] Escuchando en {HOST}:{PORT}")
+    print(f"[Servidor] Documento inicial: '{doc}' (rev={revision})")
 
     while True:
         # Get the list sockets which are ready to be read through select

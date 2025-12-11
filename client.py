@@ -7,11 +7,11 @@ from utils import transform, apply_op, send_msg, make_json
 HOST = "localhost"
 PORT = 7777
 
-doc_copy = ""                   # documento local
-current_revision = 0            # ultima revision conocida del servidor
-pending_changes = []            # lista de mensajes JSON de operaciones locales pendientes a enviar
-send_next = True                # indica si puedo mandar la proxima operacion
-exit_loop = False               # booleano para cortar el ciclo principal
+doc_copy         = ""      # documento local
+current_revision = 0       # ultima revision conocida del servidor
+pending_changes  = []      # lista de mensajes JSON de operaciones locales pendientes a enviar
+send_next        = True    # indica si puedo mandar la proxima operacion
+exit_loop        = False   # booleano para cortar el ciclo principal
 
 
 def send_next_operation(sock):
@@ -22,7 +22,7 @@ def send_next_operation(sock):
         try:
             send_next = False
             send_msg(sock, json_msg)
-            print(f"[Cliente] Enviando operacion: {json_msg["OP"]}")
+            print(f"\n[Cliente] Enviando operacion: {json_msg["OP"]}")
         except Exception:
             print("ERROR al enviar al servidor")
             exit_loop = True
@@ -45,17 +45,17 @@ def handle_server_message(sock):
         doc_copy = data_json.get("DOC", "")
         current_revision = data_json.get("REVISION", 0)
 
-        print("[Cliente] Documento compartido inicial: ")
+        print("[Servidor] Documento compartido inicial: ")
         print(f"  {doc_copy}")
-        print(f"  Revision: {current_revision}")
+        print(f"Revision: {current_revision}")
 
     # ---------- Operacion remota ----------
     elif msg_type == "OPERATOR":
         op_msg = data_json.get("OP")
         current_revision = data_json.get("REVISION")
         print(
-            f"\n[Cliente] Operacion del servidor: {op_msg} "
-            f"\nrevision: {current_revision}"
+            f"\n[Servidor] Operacion: {op_msg} "
+            f"Revision: {current_revision}\n"
         )
 
         for operation in pending_changes:
@@ -76,8 +76,7 @@ def handle_server_message(sock):
         # si la remota se anula, no la aplicamos
         if op_msg is not None:
             doc_copy = apply_op(doc_copy, op_msg)
-            print(f"[Cliente] Documento actualizado: ")
-            print(doc_copy)
+            print(f"[Cliente] Documento actualizado:  \n {doc_copy}")
         else:
             print("[Cliente] Operacion remota anulada, no se aplica.")
 
@@ -86,7 +85,7 @@ def handle_server_message(sock):
         # mandar otra operacion y desencolar de lista pendientes
         current_revision = data_json.get("REVISION")
         op = pending_changes.pop(0)
-        print(f"\n[Cliente] ACK recibido para: {op["OP"]})")
+        print(f"[Cliente] ACK recibido para: {op["OP"]})")
 
         # si todavia queda otra pendiente, actualizo su revision base
         if pending_changes:
@@ -115,7 +114,7 @@ def operations(sock, cmd, pos , msg = None):
         op["MSG"] = msg
 
     doc_copy = apply_op(doc_copy, op)
-    print(f"\n[Cliente] Documento local: {doc_copy}")
+    print(f"\n[Cliente] Documento local: \n {doc_copy}")
     # Mensaje JSON para enviar al servidor
     json_op = make_json(type="OPERATOR", rev=current_revision, op=op)
     pending_changes.append(json_op)
