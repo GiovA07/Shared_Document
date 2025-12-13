@@ -13,17 +13,11 @@ def tii(op1, op2):
     p1_id = op1.get("ID")
     p2_id = op2.get("ID")
 
-    if p1 < p2 :
-        return op1
-    elif p1 > p2:
-        op1["POS"] = p1 + 1
+    if p1 <= p2 and p1_id < p2_id:
         return op1
     else:
-        if p1_id < p2_id:
-            return op1
-        else:
-            op1["POS"] = p1 + 1
-            return op1
+        op1["POS"] = p1 + 1
+        return op1
 
 def tid(op1, op2):
     p1 = int(op1["POS"])

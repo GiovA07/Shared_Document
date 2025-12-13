@@ -4,13 +4,14 @@ import time
 from utils import  send_msg, make_json
 from ot import transform, apply_op
 
-HOST = "0.0.0.0"
-PORT = 7773
+HOST = "localhost"
+PORT = 7774
 
 doc = "Bienvenidos"     # Documento compartido
 revision = 0            # Numero de revision
 connections = []        # Sockets conectados
 op_log = []             # Historial de operaciones {"REVISION", "OP"}
+id_clients = 0
 
 SNAPSHOT_FILE = "snapshot.json"
 
@@ -36,7 +37,12 @@ def load_snapshot():
 
 # ====== Envio de mensajes / helpers ======
 def send_document_client(sock):
+    global id_clients
     json_data = make_json(type="DOC_TYPE", rev=revision, doc=doc)
+    
+    id_clients += 1
+    json_data["ID"] = id_clients
+    
     send_msg(sock, json_data)
 
 
@@ -104,7 +110,7 @@ def handle_client(sock):
 
             if msg_type == "OPERATOR":
                 # Simulamos latencia
-                #time.sleep(20)
+                time.sleep(20)
 
                 op = msg.get("OP")
                 base_revision = msg.get("REVISION")

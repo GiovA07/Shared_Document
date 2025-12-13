@@ -6,17 +6,17 @@ from utils import send_msg, make_json
 from ot import transform, apply_op
 
 HOST = "localhost"
-PORT = 7773
+PORT = 7774
 
-doc_copy = ""  # documento local
-current_revision = 0  # ultima revision conocida del servidor
-pending_changes = (
-    []
-)  # lista de mensajes JSON de operaciones locales pendientes a enviar
-send_next = True  # indica si puedo mandar la proxima operacion
-exit_loop = False  # booleano para cortar el ciclo principal
-offline = False  # booleano para ver si estoy offline
-syncing = False
+doc_copy = ""          # documento local
+current_revision = 0   # ultima revision conocida del servidor
+pending_changes = []   # lista de mensajes JSON de operaciones locales pendientes a enviar
+send_next = True       # indica si puedo mandar la proxima operacion
+exit_loop = False      # booleano para cortar el ciclo principal
+offline = False        # booleano para ver si estoy offline
+syncing = False        # booleano para ver si estoy sincronizando el cliente con el server
+
+id_client = 0
 client_socket = None
 
 
@@ -34,11 +34,10 @@ def send_next_operation(sock):
             print("[Cliente] Conexion fallo")
             offline = True
             send_next = True
-            # exit_loop = True
 
 
 def handle_server_message(sock):
-    global doc_copy, current_revision, send_next, pending_changes, exit_loop, offline, syncing
+    global doc_copy, current_revision, send_next, pending_changes, offline, id_client, syncing
 
     data = sock.recv(4096)
     if not data:
@@ -52,9 +51,13 @@ def handle_server_message(sock):
     msg_type = data_json.get("TYPE")
     # ---------- Documento inicial ----------
     if msg_type == "DOC_TYPE":
+        
+        id_client = data_json.get("ID")
+        
+
         if syncing:
-            syncing = False
             return
+        
 
         doc_copy = data_json.get("DOC", "")
         current_revision = data_json.get("REVISION", 0)
@@ -64,6 +67,7 @@ def handle_server_message(sock):
         print(f"Revision: {current_revision}")
 
     elif msg_type == "LOG_RESTORAGE":
+        
         operations_entry = data_json.get("OPERATIONS")
         for op_entry in operations_entry:
             op = op_entry.get("OP")
@@ -75,6 +79,7 @@ def handle_server_message(sock):
                 local_op = pending.get("OP")
                 if local_op is None:
                     continue
+                pending["OP"]["ID"] = id_client
                 pending["OP"] = transform(local_op.copy(), op)
                 op = transform(op.copy(), local_op)
 
@@ -84,7 +89,8 @@ def handle_server_message(sock):
 
             else:
                 print("[Cliente] Operacion remota anulada, no se aplica.")
-   
+
+        syncing = False
         send_next = True
         send_next_operation(client_socket)
     # ---------- Operacion remota ----------
@@ -136,15 +142,14 @@ def handle_server_message(sock):
 def operations(sock, cmd, pos, msg=None):
     global doc_copy, current_revision, pending_changes
 
-    op = {"KIND": cmd, "POS": pos}
-
+    op = {"KIND": cmd, "POS": pos, "ID" :id_client}
+    
     if cmd == "delete" and msg is not None:
         print("Error delete <pos> <msg> INVALIDO")
         return
 
+
     if msg is not None:
-        # id del cliente, solo te sirve localmente
-        ##op["ID"] = sock.getsockname()[1]
         op["MSG"] = msg
 
     doc_copy = apply_op(doc_copy, op)
