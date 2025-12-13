@@ -1,11 +1,11 @@
 import socket, select
 import json
 import time
-from utils import  send_msg, make_json
-from ot import transform, apply_op
+from utils import  send_msg, make_json, apply_op
+from ot import transform
 
 HOST = "localhost"
-PORT = 7774
+PORT = 7777
 
 doc = "Bienvenidos"     # Documento compartido
 revision = 0            # Numero de revision
@@ -84,13 +84,6 @@ def handle_new_connection():
     connections.append(sockfd)
     print(f"[Servidor] Cliente {addr} conectado")
 
-    try:
-        send_document_client(sockfd)
-    except Exception as e:
-        print(f"[Servidor] Error enviando documento a {addr}: {e}")
-        connections.remove(sockfd)
-        sockfd.close()
-
 def handle_client(sock):
     global doc, revision, op_log, connections
 
@@ -107,10 +100,10 @@ def handle_client(sock):
         if data:
             msg = json.loads(data.decode("utf-8").strip())
             msg_type = msg.get("TYPE")
-
-            if msg_type == "OPERATOR":
+            if msg_type == "GET_DOC":
+                send_document_client(sock)
+            elif msg_type == "OPERATOR":
                 # Simulamos latencia
-                time.sleep(20)
 
                 op = msg.get("OP")
                 base_revision = msg.get("REVISION")
@@ -158,6 +151,7 @@ def handle_client(sock):
                     "REVISION": revision,
                     "OPERATIONS": ops
                 }
+                print(f"reply revision: {reply["REVISION"]}")
                 send_msg(sock, reply)
             else:
                 print(f"[Server] El tipo del mensaje no coincide {msg_type}")

@@ -2,11 +2,12 @@ from socket import *
 import sys
 import select
 import json
-from utils import send_msg, make_json
-from ot import transform, apply_op
+import time
+from utils import send_msg, make_json, apply_op
+from ot import transform
 
 HOST = "localhost"
-PORT = 7774
+PORT = 7777
 
 doc_copy = ""          # documento local
 current_revision = 0   # ultima revision conocida del servidor
@@ -14,7 +15,7 @@ pending_changes = []   # lista de mensajes JSON de operaciones locales pendiente
 send_next = True       # indica si puedo mandar la proxima operacion
 exit_loop = False      # booleano para cortar el ciclo principal
 offline = False        # booleano para ver si estoy offline
-syncing = False        # booleano para ver si estoy sincronizando el cliente con el server
+auto_reconnect = False
 
 id_client = 0
 client_socket = None
@@ -25,6 +26,7 @@ def send_next_operation(sock):
 
     if send_next and pending_changes:
         json_msg = pending_changes[0]
+        
         try:
             send_next = False
             send_msg(sock, json_msg)
@@ -37,7 +39,7 @@ def send_next_operation(sock):
 
 
 def handle_server_message(sock):
-    global doc_copy, current_revision, send_next, pending_changes, offline, id_client, syncing
+    global doc_copy, current_revision, send_next, pending_changes, offline, id_client
 
     data = sock.recv(4096)
     if not data:
@@ -51,13 +53,7 @@ def handle_server_message(sock):
     msg_type = data_json.get("TYPE")
     # ---------- Documento inicial ----------
     if msg_type == "DOC_TYPE":
-        
         id_client = data_json.get("ID")
-        
-
-        if syncing:
-            return
-        
 
         doc_copy = data_json.get("DOC", "")
         current_revision = data_json.get("REVISION", 0)
@@ -67,19 +63,21 @@ def handle_server_message(sock):
         print(f"Revision: {current_revision}")
 
     elif msg_type == "LOG_RESTORAGE":
-        
         operations_entry = data_json.get("OPERATIONS")
+        print("Las operaciones que obtuvimos del server son: ", operations_entry)
         for op_entry in operations_entry:
             op = op_entry.get("OP")
-            current_revision = op_entry.get("REVISION")
             if op is None:
                 continue
 
             for pending in pending_changes:
+                if op is None:
+                    break
+
                 local_op = pending.get("OP")
                 if local_op is None:
                     continue
-                pending["OP"]["ID"] = id_client
+
                 pending["OP"] = transform(local_op.copy(), op)
                 op = transform(op.copy(), local_op)
 
@@ -89,10 +87,15 @@ def handle_server_message(sock):
 
             else:
                 print("[Cliente] Operacion remota anulada, no se aplica.")
+        
+        
+        current_revision = data_json.get("REVISION", current_revision)
+        if pending_changes:
+            pending_changes[0]["REVISION"] = current_revision
 
-        syncing = False
         send_next = True
         send_next_operation(client_socket)
+
     # ---------- Operacion remota ----------
     elif msg_type == "OPERATOR":
         op_msg = data_json.get("OP")
@@ -195,13 +198,32 @@ def handle_client_input(sock):
     elif cmd == "delete" and len(input_parts) == 2 and input_parts[1].isdigit():
         pos = int(input_parts[1])
         operations(sock, cmd, pos)
+    
+    elif user_input == "crash":
+        print("[Cliente] Cortando la conexion a proposito")
+        
+        global client_socket, offline, send_next
+        print("[TEST] ¡Simulando corte de cable!")
+        
+        if client_socket:
+            client_socket.close() # 1. Cerrar
+            client_socket = None  # 2. Anular la referencia (¡CRUCIAL!)
+            
+        offline = True            # 3. Poner la bandera
+        send_next = True
+        return
+    
+    elif user_input == "reconect":
+        print("[Cliente] Intentando reconectar...")
+        handler_recconection()
+        return
     else:
         print("[Cliente] Comando invalido.")
         return
 
 
 def handler_recconection():
-    global client_socket, offline, send_next, syncing
+    global client_socket, offline, send_next
     try:
         sock = socket(AF_INET, SOCK_STREAM)
         sock.settimeout(2.0)
@@ -210,7 +232,6 @@ def handler_recconection():
         client_socket = sock
         offline = False
         send_next = True
-        syncing = True
 
         msg = {
             "TYPE": "GET_LOG",
@@ -229,6 +250,7 @@ def main():
     client_socket = socket(AF_INET, SOCK_STREAM)
     client_socket.connect((HOST, PORT))
 
+    send_msg(client_socket, {"TYPE":"GET_DOC"})  
 
     print("\nComandos Válidos:")
     print("  insert <pos> <texto>  - Insertar texto en posición")
@@ -239,22 +261,16 @@ def main():
     while not exit_loop:
 
         readers = [sys.stdin]
-        # si estoy en linea escucho al server
-        if not offline:
+        if not offline and client_socket is not None and client_socket.fileno() >= 0:
             readers.append(client_socket)
-
         # pongo como parametro el 1 segundo para que salga del for
-        read, _, _ = select.select(readers, [], [], 5.0)
+        read, _, _ = select.select(readers, [], [], 1.0)
 
         for sock in read:
             if sock == client_socket:
                 handle_server_message(client_socket)
             else:
                 handle_client_input(client_socket)
-
-        if offline:
-            print("Reconectando...")
-            handler_recconection()
 
     client_socket.close()
     print("[Cliente] Cliente desconectado.")
