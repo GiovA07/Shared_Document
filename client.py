@@ -46,8 +46,6 @@ def reconect_to_server():
         print("No se pudo reconectar al servidor")
         return
 
-
-
 def disconnect():
     global client_socket, offline, send_next
     if socket:
@@ -60,11 +58,13 @@ def disconnect():
     offline = True
     send_next = True
 
-
-
+# ====== Envio de Operaciones ======
 
 def send_next_operation(sock):
     global send_next, exit_loop, offline
+
+    if offline or client_socket is None:
+        return
 
     if send_next and pending_changes:
         json_msg = pending_changes[0]
@@ -75,6 +75,90 @@ def send_next_operation(sock):
         except Exception:
             print("[Cliente] Error al enviar operacion.")
             disconnect()
+
+# ====== Manejo de mensajes del servidor ======
+def handle_log_restorage(data_json):
+    global pending_changes, send_next, doc_copy, current_revision
+    operations_entry = data_json.get("OPERATIONS")
+    if not operations:
+        print("[Cliente] No hay operaciones nuevas en el servidor")
+    else:
+        print(f"[Cliente] Sincronizando con operaciones del servidor...")
+    
+    for op_entry in operations_entry:
+        server_op = op_entry.get("OP")
+        if server_op is None:
+            continue
+
+        for pending in pending_changes:
+            if server_op is None:
+                break
+
+            local_op = pending.get("OP")
+            if local_op is None:
+                continue
+
+            pending["OP"] = transform(local_op.copy(), server_op)
+            server_op = transform(server_op.copy(), local_op)
+        if server_op is not None:
+            doc_copy = apply_op(doc_copy, server_op)
+        else:
+            print("[Cliente] Operacion remota anulada, no se aplica.")
+    
+    current_revision = data_json.get("REVISION", current_revision)
+    if pending_changes:
+        pending_changes[0]["REVISION"] = current_revision
+    
+    print(f"[Cliente] Sincronización completa. Documento:\n  '{doc_copy}'")
+    print(f"[Cliente] Revisión actual: {current_revision}\n")
+    
+    send_next = True
+    send_next_operation(client_socket)
+
+def handle_remote_operation(data_json):
+    global pending_changes, doc_copy, current_revision
+    remote_op = data_json.get("OP")
+    current_revision = data_json.get("REVISION")
+    print(f"\n[Servidor] Operacion remota: {remote_op} " f"Revision: {current_revision}\n")
+
+    for pending_msg in pending_changes:
+        if remote_op is None:
+            break
+
+        local_op = pending_msg.get("OP")
+        if local_op is None:
+            continue
+
+        # actualizo las operaciones que todavia no se enviaron
+        pending_msg["OP"] = transform(local_op.copy(), remote_op)
+        # actualizo la operacion que llego (remota)
+        remote_op = transform(remote_op.copy(), local_op)
+
+    # si la remota se anula, no la aplicamos
+    if remote_op is not None:
+        doc_copy = apply_op(doc_copy, remote_op)
+        print(f"[Cliente] Documento actualizado:  \n {doc_copy}")
+    else:
+        print("[Cliente] Operacion remota anulada, no se aplica.")
+
+def handle_ack(data_json):
+    global current_revision, pending_changes, send_next
+    
+    if not pending_changes:
+        print("[Cliente] ACK inesperado (no hay operaciones pendientes)")
+        return
+    
+    current_revision = data_json.get("REVISION")
+    # Quitamos la operacion confirmada de la cola
+    op = pending_changes.pop(0)
+    print(f"[Cliente] ACK recibido para: {op['OP']})")
+
+    # Actualizo la revision de la siguiente operacion
+    if pending_changes:
+        pending_changes[0]["REVISION"] = current_revision
+    # Enviamos la siguiente operacion
+    send_next = True
+    send_next_operation(client_socket)
 
 
 def handle_server_message(sock):
@@ -100,81 +184,11 @@ def handle_server_message(sock):
         print(f"Revision: {current_revision}")
 
     elif msg_type == "LOG_RESTORAGE":
-        operations_entry = data_json.get("OPERATIONS")
-        print("Las operaciones que obtuvimos del server son: ", operations_entry)
-        for op_entry in operations_entry:
-            op = op_entry.get("OP")
-            if op is None:
-                continue
-
-            for pending in pending_changes:
-                if op is None:
-                    break
-
-                local_op = pending.get("OP")
-                if local_op is None:
-                    continue
-
-                pending["OP"] = transform(local_op.copy(), op)
-                op = transform(op.copy(), local_op)
-
-            if op is not None:
-                doc_copy = apply_op(doc_copy, op)
-                print(f"[Cliente] Documento actualizado:  \n {doc_copy}")
-
-            else:
-                print("[Cliente] Operacion remota anulada, no se aplica.")
-        
-        
-        current_revision = data_json.get("REVISION", current_revision)
-        if pending_changes:
-            pending_changes[0]["REVISION"] = current_revision
-
-        send_next = True
-        send_next_operation(client_socket)
-
-    # ---------- Operacion remota ----------
+        handle_log_restorage(data_json)
     elif msg_type == "OPERATOR":
-        op_msg = data_json.get("OP")
-        current_revision = data_json.get("REVISION")
-        print(f"\n[Servidor] Operacion: {op_msg} " f"Revision: {current_revision}\n")
-
-        for operation in pending_changes:
-            if op_msg is None:
-                break
-
-            local_op = operation.get("OP")
-            if local_op is None:
-                continue
-
-            # actualizo las operaciones que todavia no se enviaron
-            operation["OP"] = transform(local_op.copy(), op_msg)
-            # actualizo la operacion que llego (remota)
-            op_msg = transform(op_msg.copy(), local_op)
-
-        print(f"[Cliente] Operacion transformada: {op_msg}")
-
-        # si la remota se anula, no la aplicamos
-        if op_msg is not None:
-            doc_copy = apply_op(doc_copy, op_msg)
-            print(f"[Cliente] Documento actualizado:  \n {doc_copy}")
-        else:
-            print("[Cliente] Operacion remota anulada, no se aplica.")
-
-    # ---------- ACK ----------
+        handle_remote_operation(data_json)
     elif msg_type == "ACK":
-        # mandar otra operacion y desencolar de lista pendientes
-        current_revision = data_json.get("REVISION")
-        op = pending_changes.pop(0)
-        print(f"[Cliente] ACK recibido para: {op['OP']})")
-
-        # si todavia queda otra pendiente, actualizo su revision base
-        if pending_changes:
-            pending_changes[0]["REVISION"] = current_revision
-
-        send_next = True
-        send_next_operation(client_socket)
-
+        handle_ack(data_json)
     else:
         print("[Cliente] Mensaje no valido enviado desde el servidor:", data_json)
 
