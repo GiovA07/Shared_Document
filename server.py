@@ -36,7 +36,7 @@ def load_snapshot():
         print(f"[Servidor] Error cargando snapshot.")
 
 # ====== Envio de mensajes / helpers ======
-def send_document_client(sock):
+def send_initial_document(sock):
     global id_clients
     json_data = make_json(type="DOC_TYPE", rev=revision, doc=doc)
     
@@ -44,11 +44,13 @@ def send_document_client(sock):
     json_data["ID"] = id_clients
     
     send_msg(sock, json_data)
+    print(f"[Servidor] Documento inicial enviado a cliente {id_clients}")
+
 
 
 def send_ack(sock):
-    data = make_json(type="ACK", rev=revision)
     try:
+        data = make_json(type="ACK", rev=revision)
         send_msg(sock, data)
     except:
         print("[Servidor] Error al enviar ack")
@@ -82,7 +84,7 @@ def handle_new_connection():
 
     sockfd, addr = server_socket.accept()
     connections.append(sockfd)
-    print(f"[Servidor] Cliente {addr} conectado")
+    print(f"[Servidor] Nueva Conexion desde {addr}")
 
 def handle_client(sock):
     global doc, revision, op_log, connections
@@ -101,7 +103,7 @@ def handle_client(sock):
             msg = json.loads(data.decode("utf-8").strip())
             msg_type = msg.get("TYPE")
             if msg_type == "GET_DOC":
-                send_document_client(sock)
+                send_initial_document(sock)
             elif msg_type == "OPERATOR":
                 # Simulamos latencia
 
