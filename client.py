@@ -80,7 +80,7 @@ def send_next_operation(sock):
 def handle_log_restorage(data_json):
     global pending_changes, send_next, doc_copy, current_revision
     operations_entry = data_json.get("OPERATIONS")
-    if not operations:
+    if not operations_entry:
         print("[Cliente] No hay operaciones nuevas en el servidor")
     else:
         print(f"[Cliente] Sincronizando con operaciones del servidor...")
@@ -192,16 +192,15 @@ def handle_server_message(sock):
     else:
         print("[Cliente] Mensaje no valido enviado desde el servidor:", data_json)
 
-
-def operations(sock, cmd, pos, msg=None):
+# ====== Operaciones del usuario ======
+def execute_operation(sock, kind, pos, msg=None):
     global doc_copy, current_revision, pending_changes
 
-    op = {"KIND": cmd, "POS": pos, "ID" :id_client}
-    
-    if cmd == "delete" and msg is not None:
+    if kind == "delete" and msg is not None:
         print("Error delete <pos> <msg> INVALIDO")
         return
-
+    
+    op = {"KIND": kind, "POS": pos, "ID" :id_client}
 
     if msg is not None:
         op["MSG"] = msg
@@ -212,12 +211,11 @@ def operations(sock, cmd, pos, msg=None):
     json_op = make_json(type="OPERATOR", rev=current_revision, op=op)
     pending_changes.append(json_op)
 
-    ## si esty offline sigo encolando en cambios pendiente sin mandarlo al servidor
+    # Enviar la siguiente operacion si no estamos offline
     if not offline:
-        # Mensaje JSON para enviar al servidor
         send_next_operation(sock)
 
-
+# ====== Manejo de entrada del usuario ======
 def handle_client_input(sock):
     global exit_loop
 
@@ -226,46 +224,60 @@ def handle_client_input(sock):
     if user_input == "exit":
         exit_loop = True
         return
-
-    input_parts = user_input.split(" ")
-    if not input_parts:
-        print("[Cliente] Comando vacio")
-        return
-
-    cmd = input_parts[0]
-    # ----- insert -----
-    if (
-        cmd == "insert"
-        and len(input_parts) >= 2
-        and len(input_parts) <= 3
-        and input_parts[1].isdigit()
-    ):
-
-        pos = int(input_parts[1])
-        msg_text = " " if len(input_parts) == 2 else input_parts[2]
-        operations(sock, cmd, pos, msg_text)
-
-    # ----- delete -----
-    elif cmd == "delete" and len(input_parts) == 2 and input_parts[1].isdigit():
-        pos = int(input_parts[1])
-        operations(sock, cmd, pos)
     
-    elif user_input == "crash":
-        print("[Cliente] Cortando la conexion a proposito")
-        
-        global client_socket, offline, send_next
-        print("[Cliente] ¡Simulando corte de cable!")
+    if user_input == "crash":
+        print("\n[Cliente] Simulando desconexion forzada...")        
         disconnect()
         print("[Cliente] Desconectado. Usa 'reconnect' para reconectar.\n")
         return
     
-    elif user_input == "reconect":
-        print("[Cliente] Intentando reconectar...")
-        reconect_to_server()
+    if user_input == "reconnect":
+        if not offline:
+            print("[Cliente] Ya estas conectado")
+        else:
+            reconect_to_server()
         return
+
+    parts = user_input.split(" ")
+    if not parts:
+        print("[Cliente] Comando vacio")
+        return
+
+    cmd = parts[0]
+    # ----- insert -----
+    if (
+        cmd == "insert"
+        and len(parts) >= 2
+        and len(parts) <= 3
+        and parts[1].isdigit()
+    ):
+
+        pos = int(parts[1])
+        msg_text = " " if len(parts) == 2 else parts[2]
+        execute_operation(sock, cmd, pos, msg_text)
+
+    # ----- delete -----
+    elif cmd == "delete" and len(parts) == 2 and parts[1].isdigit():
+        pos = int(parts[1])
+        execute_operation(sock, cmd, pos)
     else:
         print("[Cliente] Comando invalido.")
+        print_help()
         return
+
+
+def print_help():
+    print("\n")
+    print("Comandos disponibles:")
+    print("  insert <pos> <texto>  - Insertar texto en posicion")
+    print("  insert <pos>          - Insertar espacio en posicion")
+    print("  delete <pos>          - Eliminar caracter en posicion")
+    print("  crash                 - Simular desconexion")
+    print("  reconnect             - Reconectar al servidor")
+    print("  exit                  - Salir del programa")
+    print("\n")
+
+
 
 def main():
     global exit_loop, client_socket, offline
@@ -275,11 +287,7 @@ def main():
 
     send_msg(client_socket, {"TYPE":"GET_DOC"})  
 
-    print("\nComandos Válidos:")
-    print("  insert <pos> <texto>  - Insertar texto en posición")
-    print("  insert <pos>          - Insertar espacio en posición")
-    print("  delete <pos>          - Eliminar caracter en posición")
-    print("  exit                  - Salir\n")
+    print_help()
 
     while not exit_loop:
 
