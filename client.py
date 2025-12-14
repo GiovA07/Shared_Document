@@ -21,21 +21,60 @@ id_client = 0
 client_socket = None
 
 
+# ====== Funciones de conexion ======
+def reconect_to_server():
+    global client_socket, offline, send_next
+    try:
+        sock = socket(AF_INET, SOCK_STREAM)
+        sock.settimeout(2.0)
+        sock.connect((HOST, PORT))
+        sock.settimeout(None)
+
+        client_socket = sock
+        offline = False
+        send_next = True
+
+        msg = {
+            "TYPE": "GET_LOG",
+            "REVISION": current_revision
+        }
+
+        send_msg(sock,msg)
+        print("[Cliente] Reconexion exitosa. Sincronizando...")
+
+    except Exception:
+        print("No se pudo reconectar al servidor")
+        return
+
+
+
+def disconnect():
+    global client_socket, offline, send_next
+    if socket:
+        try:
+            client_socket.close()
+        except:
+            pass
+        client_socket = None
+    
+    offline = True
+    send_next = True
+
+
+
+
 def send_next_operation(sock):
     global send_next, exit_loop, offline
 
     if send_next and pending_changes:
         json_msg = pending_changes[0]
-        
         try:
             send_next = False
             send_msg(sock, json_msg)
             print(f"\n[Cliente] Enviando operacion: {json_msg['OP']}")
         except Exception:
-            sock.close()
-            print("[Cliente] Conexion fallo")
-            offline = True
-            send_next = True
+            print("[Cliente] Error al enviar operacion.")
+            disconnect()
 
 
 def handle_server_message(sock):
@@ -43,10 +82,8 @@ def handle_server_message(sock):
 
     data = sock.recv(4096)
     if not data:
-        sock.close()
         print("[Cliente] Servidor desconectado")
-        offline = True
-        send_next = True
+        disconnect()
         return
 
     data_json = json.loads(data.decode("utf-8"))
@@ -203,46 +240,18 @@ def handle_client_input(sock):
         print("[Cliente] Cortando la conexion a proposito")
         
         global client_socket, offline, send_next
-        print("[TEST] ¡Simulando corte de cable!")
-        
-        if client_socket:
-            client_socket.close() # 1. Cerrar
-            client_socket = None  # 2. Anular la referencia (¡CRUCIAL!)
-            
-        offline = True            # 3. Poner la bandera
-        send_next = True
+        print("[Cliente] ¡Simulando corte de cable!")
+        disconnect()
+        print("[Cliente] Desconectado. Usa 'reconnect' para reconectar.\n")
         return
     
     elif user_input == "reconect":
         print("[Cliente] Intentando reconectar...")
-        handler_recconection()
+        reconect_to_server()
         return
     else:
         print("[Cliente] Comando invalido.")
         return
-
-
-def handler_recconection():
-    global client_socket, offline, send_next
-    try:
-        sock = socket(AF_INET, SOCK_STREAM)
-        sock.settimeout(2.0)
-        sock.connect((HOST, PORT))
-        sock.settimeout(None)
-        client_socket = sock
-        offline = False
-        send_next = True
-
-        msg = {
-            "TYPE": "GET_LOG",
-            "REVISION": current_revision
-        }
-
-        send_msg(sock,msg)
-    except Exception:
-        print("No se pudo reconectar al servidor")
-        return
-
 
 def main():
     global exit_loop, client_socket, offline
@@ -272,7 +281,7 @@ def main():
             else:
                 handle_client_input(client_socket)
 
-    client_socket.close()
+    disconnect()
     print("[Cliente] Cliente desconectado.")
 
 
