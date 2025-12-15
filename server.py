@@ -15,6 +15,7 @@ id_clients = 0
 
 SNAPSHOT_FILE = "snapshot.json"
 
+# ====== Archivo de estado (snapshot) ======
 def save_snapshot():
     with open(SNAPSHOT_FILE, "w", encoding="utf-8") as f:
         json_data = {"DOC": doc, "REVISION": revision, "LOG": op_log}
@@ -47,16 +48,14 @@ def send_initial_document(sock):
     print(f"[Servidor] Documento inicial enviado a cliente {id_clients}")
 
 
-
+# ====== comunicacion con clientes ======
 def send_ack(sock):
     try:
         data = make_json(type="ACK", rev=revision)
         send_msg(sock, data)
     except:
         print("[Servidor] Error al enviar ack")
-        sock.close()
-        if sock in connections:
-            connections.remove(sock)
+        close_connection(sock)
 
 
 # Manda la operacion realizada a todos los clientes (excepto el que la envio)
@@ -72,11 +71,16 @@ def broadcast (msg, origin_sock):
         try:
             send_msg(sock, msg)
         except:
-            print("[Server] Error al enviar a cliente, cerrando conexion")
-            sock.close()
-            if sock in connections:
-                connections.remove(sock)
-            
+            print("[Server] Error al enviar a cliente.")
+            close_connection(sock)
+
+def close_connection(client_socket):
+    client_socket.close()
+
+    if client_socket in connections:
+        connections.remove(client_socket)
+    
+    print("[Servidor] Cliente desconectado")
 
 # ====== Eventos ======
 def handle_new_connection():
@@ -93,10 +97,7 @@ def handle_client(sock):
         data = sock.recv(4096)
 
         if not data:
-            print("[Servidor] Cliente desconectado")
-            if sock in connections:
-                connections.remove(sock)
-            sock.close()
+            close_connection(sock)
             return
 
         if data:
@@ -158,10 +159,8 @@ def handle_client(sock):
             else:
                 print(f"[Server] El tipo del mensaje no coincide {msg_type}")
     except:
-        print("[Server] Error con cliente, cerrando conexion. ")
-        if sock in connections:
-            connections.remove(sock)
-        sock.close()
+        print("[Server] Error con cliente. ")
+        close_connection(sock)
 
 
 def main():
