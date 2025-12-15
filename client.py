@@ -48,7 +48,7 @@ def reconect_to_server():
 
 def disconnect():
     global client_socket, offline, send_next
-    if socket:
+    if socket is not None:
         try:
             client_socket.close()
         except:

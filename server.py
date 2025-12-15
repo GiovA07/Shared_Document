@@ -159,7 +159,8 @@ def handle_client(sock):
                 print(f"[Server] El tipo del mensaje no coincide {msg_type}")
     except:
         print("[Server] Error con cliente, cerrando conexion. ")
-        connections.remove(sock)
+        if sock in connections:
+            connections.remove(sock)
         sock.close()
 
 
