@@ -67,8 +67,8 @@ def broadcast (msg, origin_sock):
 
         # el que envio la op recibe solo un ACK
         if sock == origin_sock:
-            send_ack(sock)
-            continue
+                send_ack(sock)
+                continue
         try:
             send_msg(sock, msg)
         except:
@@ -96,19 +96,19 @@ def handle_client(sock):
 
     try:
         data = sock.recv(4096)
-
         if not data:
             close_connection(sock)
             return
 
         if data:
             msg = json.loads(data.decode("utf-8").strip())
+            print(msg)
             msg_type = msg.get("TYPE")
             if msg_type == "GET_DOC":
                 send_initial_document(sock)
             elif msg_type == "OPERATOR":
                 # Simulamos latencia
-                time.sleep(20)
+                time.sleep(10)
                 op = msg.get("OP")
                 base_revision = msg.get("REVISION")
 
@@ -159,9 +159,10 @@ def handle_client(sock):
             elif msg_type == "GET_LOG":
                 #cliente se reconecta y manda la ultima version de su archivo "revision"
                 rev_cliente = int(msg.get("REVISION"))
+                print(f"LLega {rev_cliente}")
                 ops = []
                 for op in op_log:
-                    if op["REVISION"] > rev_cliente:
+                    if op["REVISION"] > rev_cliente and op["OP"]["ID"] != msg["ID"]:
                         ops.append(op)
                 
                 reply = {

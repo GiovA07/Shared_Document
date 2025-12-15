@@ -38,7 +38,8 @@ def reconect_to_server():
 
         msg = {
             "TYPE": "GET_LOG",
-            "REVISION": current_revision
+            "REVISION": current_revision,
+            "ID" : id_client
         }
 
         send_msg(sock,msg)
