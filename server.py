@@ -12,6 +12,7 @@ revision = 0            # Numero de revision
 connections = []        # Sockets conectados
 op_log = []             # Historial de operaciones {"REVISION", "OP"}
 id_clients = 0
+last_num_seq = {}       # llevo el numero de la ultima operacion mandada de cada cliente {"ID_client" : num_seq}
 
 SNAPSHOT_FILE = "snapshot.json"
 
@@ -107,9 +108,23 @@ def handle_client(sock):
                 send_initial_document(sock)
             elif msg_type == "OPERATOR":
                 # Simulamos latencia
-
+                time.sleep(20)
                 op = msg.get("OP")
                 base_revision = msg.get("REVISION")
+
+                id_op = op.get("ID")
+                seq_num_op = op.get("SEQ_NUM")
+
+                if last_num_seq.get(id_op) is None:
+                    last_num_seq[id_op] = -1
+
+                if last_num_seq.get(id_op) < seq_num_op:
+                    last_num_seq[id_op] = seq_num_op
+                else:
+                    print("Operacion ya recibida")
+                    # nesesario para actualizar ack del cliente
+                    send_ack(sock)
+                    return
 
                 print("[Cliente] Operacion :", op, "BASE_REVISION:", base_revision)
 

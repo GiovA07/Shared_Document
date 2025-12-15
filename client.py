@@ -6,6 +6,7 @@ import time
 from utils import send_msg, make_json, apply_op
 from ot import transform
 
+
 HOST = "localhost"
 PORT = 7777
 
@@ -16,6 +17,7 @@ send_next = True       # indica si puedo mandar la proxima operacion
 exit_loop = False      # booleano para cortar el ciclo principal
 offline = False        # booleano para ver si estoy offline
 auto_reconnect = False
+seq_num  = 0           # numero de sequencia para identificar si la operacion ya fue enviada
 
 id_client = 0
 client_socket = None
@@ -80,6 +82,7 @@ def send_next_operation(sock):
 def handle_log_restorage(data_json):
     global pending_changes, send_next, doc_copy, current_revision
     operations_entry = data_json.get("OPERATIONS")
+    print(operations_entry)
     if not operations_entry:
         print("[Cliente] No hay operaciones nuevas en el servidor")
     else:
@@ -194,14 +197,15 @@ def handle_server_message(sock):
 
 # ====== Operaciones del usuario ======
 def execute_operation(sock, kind, pos, msg=None):
-    global doc_copy, current_revision, pending_changes
+    global doc_copy, current_revision, pending_changes, seq_num
 
     if kind == "delete" and msg is not None:
         print("Error delete <pos> <msg> INVALIDO")
         return
     
-    op = {"KIND": kind, "POS": pos, "ID" :id_client}
-
+    op = {"KIND": kind, "POS": pos, "ID" :id_client, "SEQ_NUM":seq_num}
+    seq_num += 1
+    
     if msg is not None:
         op["MSG"] = msg
 
