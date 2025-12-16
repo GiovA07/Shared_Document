@@ -51,7 +51,7 @@ def reconect_to_server():
 
 def disconnect():
     global client_socket, offline, send_next
-    if socket is not None:
+    if client_socket is not None:
         try:
             client_socket.close()
         except:
@@ -64,7 +64,7 @@ def disconnect():
 # ====== Envio de Operaciones ======
 
 def send_next_operation(sock):
-    global send_next, exit_loop, offline
+    global send_next, exit_loop, offline, pending_changes
 
     if offline or client_socket is None:
         return
@@ -72,6 +72,7 @@ def send_next_operation(sock):
     if send_next and pending_changes:
         json_msg = pending_changes[0]
         try:
+            pending_changes[0]["REVISION"] = current_revision
             send_next = False
             send_msg(sock, json_msg)
             print(f"\n[Cliente] Enviando operacion: {json_msg['OP']}")
@@ -110,8 +111,6 @@ def handle_log_restorage(data_json):
             print("[Cliente] Operacion remota anulada, no se aplica.")
     
     current_revision = data_json.get("REVISION", current_revision)
-    if pending_changes:
-        pending_changes[0]["REVISION"] = current_revision
     
     print(f"[Cliente] Sincronización completa. Documento:\n  '{doc_copy}'")
     print(f"[Cliente] Revisión actual: {current_revision}\n")
@@ -157,9 +156,6 @@ def handle_ack(data_json):
     op = pending_changes.pop(0)
     print(f"[Cliente] ACK recibido para: {op['OP']})")
 
-    # Actualizo la revision de la siguiente operacion
-    if pending_changes:
-        pending_changes[0]["REVISION"] = current_revision
     # Enviamos la siguiente operacion
     send_next = True
     send_next_operation(client_socket)
