@@ -1,3 +1,4 @@
+from utils import op_is_none, mark_op_none
 # ---------- OT: Transformaciones ----------
 # Transformaciones OT basicas:
 #   tii: transform insert vs insert
@@ -45,14 +46,18 @@ def tdd(op1, op2):
         op1["POS"] = p1 - 1
         return op1
     else:
-        return None
+        return mark_op_none(op1)
 
 
 def transform(op1, op2):
     if op1 is None:
-        return None
+        return mark_op_none(op1)
     if op2 is None:
-        return op1 
+        return op1.copy()
+    
+    if op_is_none(op1) or op_is_none(op2):
+        return op1.copy()
+    
     k1 = op1.get("KIND")
     k2 = op2.get("KIND")
 

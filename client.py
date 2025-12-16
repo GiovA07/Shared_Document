@@ -3,351 +3,316 @@ import sys
 import select
 import json
 import time
-from utils import send_msg, make_json, apply_op
+from utils import send_msg, make_json, apply_op, op_is_none
 from ot import transform
 
 
 HOST = "localhost"
 PORT = 7777
 
-doc_copy = ""          # documento local
-current_revision = 0   # ultima revision conocida del servidor
-pending_changes = []   # lista de mensajes JSON de operaciones locales pendientes a enviar
-send_next = True       # indica si puedo mandar la proxima operacion
-exit_loop = False      # booleano para cortar el ciclo principal
-offline = False        # booleano para ver si estoy offline
-auto_reconnect = False
-seq_num  = 0           # numero de sequencia para identificar si la operacion ya fue enviada
+class Pending:
+    base_rev: int
+    op: dict      # {"KIND","POS","MSG","ID","SEQ_NUM"}
 
-id_client = 0
-client_socket = None
+    def __init__(self, base_rev, op):
+        self.base_rev = base_rev
+        self.op = op
 
-client_buffer = ""     # utilizado para almacenar mensajes de mas 4096
+class Client:
+    def __init__(self):
+        self.sock = None
+        self.client_buffer = "" 
+
+        self.client_id = -1
+        self.server_rev = 0
+        self.doc = ""
+
+        self.pending = []
+        self.next_seq = 0
+        self.waitting_ack = False
+        self.offline = False
+
+        self.exit_loop = False
 
 
+    def connect(self):
+        s = socket(AF_INET, SOCK_STREAM)
+        s.connect((HOST, PORT))
 
-# ====== Funciones de conexion ======
-def reconect_to_server():
-    global client_socket, offline, send_next
-    try:
-        sock = socket(AF_INET, SOCK_STREAM)
-        sock.settimeout(2.0)
-        sock.connect((HOST, PORT))
-        sock.settimeout(None)
+        self.sock = s
+        self.offline = False
+        
+        send_msg(self.sock, {"TYPE": "GET_DOC"})
 
-        client_socket = sock
-        offline = False
-        send_next = True
 
-        msg = {
-            "TYPE": "GET_LOG",
-            "REVISION": current_revision,
-            "ID" : id_client
-        }
+    def disconnect(self):
+        if self.sock is not None:
+            try:
+                self.sock.close()
+            except:
+                pass
+        self.sock = None
+        self.offline = True
+        self.waitting_ack = False
+        print("[Cliente] Desconectado.")
 
-        send_msg(sock,msg)
-        print("[Cliente] Reconexion exitosa. Sincronizando...")
-
-    except Exception:
-        print("No se pudo reconectar al servidor")
-        return
-
-def disconnect():
-    global client_socket, offline, send_next
-    if client_socket is not None:
+    def reconnect_to_server(self):
         try:
-            client_socket.close()
-        except:
-            pass
-        client_socket = None
+            s = socket(AF_INET, SOCK_STREAM)
+            s.settimeout(2.0)
+            s.connect((HOST, PORT))
+            s.settimeout(None)
+
+            self.sock = s
+            self.offline = False
+            self.waitting_ack = False
+
+            msg = {
+                "TYPE": "GET_LOG",
+                "REVISION": self.server_rev,
+                "ID": self.client_id
+            }
+            
+            send_msg(self.sock, msg)
+            print("[Cliente] Reconexion exitosa. Sincronizando...")
+        except Exception:
+            print("[Cliente] No se pudo reconectar al servidor")
     
-    offline = True
-    send_next = True
+    def send_next_operation(self):
+        if self.offline or self.sock is None:
+            return
+        if self.waitting_ack:
+            return
+        if not self.pending:
+            return
 
-# ====== Envio de Operaciones ======
-
-def send_next_operation(sock):
-    global send_next, exit_loop, offline, pending_changes
-
-    if offline or client_socket is None:
-        return
-    
-    while pending_changes and pending_changes[0].get("OP") is None:
-        pending_changes.pop(0)
-
-    if send_next and pending_changes:
-        json_msg = pending_changes[0]
+        msg = make_json(type="OPERATOR", rev=self.server_rev, op=self.pending[0].op)
         try:
-            pending_changes[0]["REVISION"] = current_revision
-            send_next = False
-            send_msg(sock, json_msg)
-            print(f"\n[Cliente] Enviando operacion: {json_msg['OP']}")
+            send_msg(self.sock, msg)
+            self.waitting_ack = True
+            print(f"\n[Cliente] Enviando operacion: {self.pending[0].op}")
         except Exception:
             print("[Cliente] Error al enviar operacion.")
-            disconnect()
+            self.disconnect()
 
-# ====== Manejo de mensajes del servidor ======
-def handle_log_restorage(data_json):
-    global pending_changes, send_next, doc_copy, current_revision
-    
-    operations_entry = data_json.get("OPERATIONS")
-
-    if not operations_entry:
-        print("[Cliente] No hay operaciones nuevas en el servidor")
-    else:
-        print(f"[Cliente] Sincronizando con operaciones del servidor...")
-    
-
-    operation_entry_filer =[]
-    for operation in operations_entry:
-        # si op eracion ya esta en log entonces la borro de cambios pendientes
-        for op in pending_changes:    
-            if operation["OP"]["ID"] == id_client and operation["OP"]["SEQ_NUM"] == op["OP"]["SEQ_NUM"]:
-                pending_changes.pop(0)
-        
-        if operation["OP"]["ID"] == id_client and operation["OP"]["SEQ_NUM"] <= seq_num:            
-            continue
-        
-        if operation["REVISION"] > current_revision:
-            operation_entry_filer.append(operation)
-    
-    for op_entry in operation_entry_filer:
-        
-        server_op = op_entry.get("OP")
-        if server_op is None:
-            continue
-
-        for pending in pending_changes:
-            if server_op is None:
-                break
-
-            local_op = pending.get("OP")
-            if local_op is None:
-                continue
-
-            pending["OP"] = transform(local_op.copy(), server_op)
-            server_op = transform(server_op.copy(), local_op)
-        if server_op is not None:
-            doc_copy = apply_op(doc_copy, server_op)
-        else:
-            print("[Cliente] Operacion remota anulada, no se aplica.")
-    
-    current_revision = data_json.get("REVISION", current_revision)
-    
-    print(f"[Cliente] Sincronización completa. Documento:\n  '{doc_copy}'")
-    print(f"[Cliente] Revisión actual: {current_revision}\n")
-    
-    send_next = True
-    send_next_operation(client_socket)
-
-def handle_remote_operation(data_json):
-    global pending_changes, doc_copy, current_revision
-    remote_op = data_json.get("OP")
-    current_revision = data_json.get("REVISION")
-    print(f"\n[Servidor] Operacion remota: {remote_op} " f"Revision: {current_revision}\n")
-
-    for pending_msg in pending_changes:
-        if remote_op is None:
-            break
-
-        local_op = pending_msg.get("OP")
-        if local_op is None:
-            continue
-
-        # actualizo las operaciones que todavia no se enviaron
-        pending_msg["OP"] = transform(local_op.copy(), remote_op)
-        # actualizo la operacion que llego (remota)
-        remote_op = transform(remote_op.copy(), local_op)
-
-    # si la remota se anula, no la aplicamos
-    if remote_op is not None:
-        doc_copy = apply_op(doc_copy, remote_op)
-        print(f"[Cliente] Documento actualizado:  \n {doc_copy}")
-    else:
-        print("[Cliente] Operacion remota anulada, no se aplica.")
-
-def handle_ack(data_json):
-    global current_revision, pending_changes, send_next
-    
-    if not pending_changes:
-        print("[Cliente] ACK inesperado (no hay operaciones pendientes)")
-        return
-    
-    current_revision = data_json.get("REVISION")
-    # Quitamos la operacion confirmada de la cola
-    op = pending_changes.pop(0)
-    print(f"[Cliente] ACK recibido para: {op['OP']})")
-
-    # Enviamos la siguiente operacion
-    send_next = True
-    send_next_operation(client_socket)
-
-
-def handle_server_message(sock):
-    global doc_copy, current_revision, send_next, pending_changes, offline, id_client, client_buffer
-
-    try:
-        data = sock.recv(4096)
-    except:
-        data = None
-    
-    
-    if not data:
-        print("[Cliente] Servidor desconectado")
-        disconnect()
-        return
-    
-    client_buffer += data.decode("utf-8")
-
-    while "\n" in client_buffer:
-        msg_str, resto = client_buffer.split("\n", 1)
-        client_buffer = resto
+    def handle_server_message(self):
         try:
-            data_json = json.loads(msg_str)
-            process_server_msg(data_json)
+            data = self.sock.recv(4096)
         except:
-            print("Invalid JSON")    
-   
-    
+            data = None
 
-def process_server_msg(data_json):   
-    global doc_copy, current_revision, send_next, pending_changes, id_client
-    msg_type = data_json.get("TYPE")
-    # ---------- Documento inicial ----------
-    if msg_type == "DOC_TYPE":
-        id_client = data_json.get("ID")
+        if not data:
+            print("[Cliente] Servidor desconectado")
+            self.disconnect()
+            return
 
-        doc_copy = data_json.get("DOC", "")
-        current_revision = data_json.get("REVISION", 0)
+        self.client_buffer += data.decode("utf-8")
 
-        print("[Servidor] Documento compartido inicial: ")
-        print(f"  {doc_copy}")
-        print(f"Revision: {current_revision}")
+        while "\n" in self.client_buffer:
+            msg_str, resto = self.client_buffer.split("\n", 1)
+            self.client_buffer = resto
+            msg_str = msg_str.strip()
+            if not msg_str:
+                continue
+            try:
+                data_json = json.loads(msg_str)
+                self.process_server_msg(data_json)
+            except:
+                print("[Cliente] Invalid JSON")
 
-    elif msg_type == "LOG_RESTORAGE":
-        handle_log_restorage(data_json)
-    elif msg_type == "OPERATOR":
-        handle_remote_operation(data_json)
-    elif msg_type == "ACK":
-        handle_ack(data_json)
-    else:
-        print("[Cliente] Mensaje no valido enviado desde el servidor:", data_json)
+    def process_server_msg(self, data_json):
+        msg_type = data_json.get("TYPE")
 
-# ====== Operaciones del usuario ======
-def execute_operation(sock, kind, pos, msg=None):
-    global doc_copy, current_revision, pending_changes, seq_num
+        if msg_type == "DOC_TYPE":
+            self.client_id = data_json.get("ID", -1)
+            self.doc = data_json.get("DOC", "")
+            self.server_rev = data_json.get("REVISION", 0)
 
-    if kind == "delete" and msg is not None:
-        print("Error delete <pos> <msg> INVALIDO")
-        return
-    
-    op = {"KIND": kind, "POS": pos, "ID" :id_client, "SEQ_NUM":seq_num}
-    seq_num += 1
-    
-    if msg is not None:
-        op["MSG"] = msg
+            print("[Servidor] Documento compartido inicial:")
+            print(f"  {self.doc}")
+            print(f"Revision: {self.server_rev}")
 
-    doc_copy = apply_op(doc_copy, op)
-    print(f"\n[Cliente] Documento local: \n {doc_copy}")
+        elif msg_type == "LOG_RESTORAGE":
+            self.handle_log_restorage(data_json)
 
-    json_op = make_json(type="OPERATOR", rev=current_revision, op=op)
-    pending_changes.append(json_op)
+        elif msg_type == "OPERATOR":
+            self.handle_remote_operation(data_json)
 
-    # Enviar la siguiente operacion si no estamos offline
-    if not offline:
-        send_next_operation(sock)
+        elif msg_type == "ACK":
+            self.handle_ack(data_json)
 
-# ====== Manejo de entrada del usuario ======
-def handle_client_input(sock):
-    global exit_loop
-
-    user_input = sys.stdin.readline().strip()
-
-    if user_input == "exit":
-        exit_loop = True
-        return
-    
-    if user_input == "crash":
-        print("\n[Cliente] Simulando desconexion forzada...")        
-        disconnect()
-        print("[Cliente] Desconectado. Usa 'reconnect' para reconectar.\n")
-        return
-    
-    if user_input == "reconnect":
-        if not offline:
-            print("[Cliente] Ya estas conectado")
         else:
-            reconect_to_server()
-        return
+            print("[Cliente] Mensaje no valido enviado desde el servidor:", data_json)
 
-    parts = user_input.split(" ")
-    if not parts:
-        print("[Cliente] Comando vacio")
-        return
+    def transform_remote_against_pending(self, remote_op):
+        remote_op = remote_op.copy()
+        for p in self.pending:
+            local_op = p.op
+            if op_is_none(remote_op):
+                break
+            if op_is_none(local_op):
+                continue
+            p.op = transform(local_op.copy(), remote_op)
+            remote_op = transform(remote_op.copy(), local_op)
+        return remote_op
+    
+    def handle_log_restorage(self, data_json):
+        operations_entry = data_json.get("OPERATIONS", [])
+        server_final_rev = data_json.get("REVISION", self.server_rev)
 
-    cmd = parts[0]
-    # ----- insert -----
-    if (
-        cmd == "insert"
-        and len(parts) >= 2
-        and len(parts) <= 3
-        and parts[1].isdigit()
-    ):
+        print("[Cliente] Sincronizando con operaciones del servidor...")
 
-        pos = int(parts[1])
-        msg_text = " " if len(parts) == 2 else parts[2]
-        execute_operation(sock, cmd, pos, msg_text)
+        # filtra ops realmente nuevas
+        ops_to_apply = []
+        for entry in operations_entry:
+            entry_op = entry.get("OP")
+            if self.pending and entry_op.get("ID") == self.client_id and entry_op.get("SEQ_NUM") == self.pending[0].op["SEQ_NUM"]:
+                self.pending.pop(0)
 
-    # ----- delete -----
-    elif cmd == "delete" and len(parts) == 2 and parts[1].isdigit():
-        pos = int(parts[1])
-        execute_operation(sock, cmd, pos)
-    else:
-        print("[Cliente] Comando invalido.")
-        print_help()
-        return
+            if  entry_op.get("ID") != self.client_id:
+                ops_to_apply.append(entry)
 
+        # aplico una por una, haciendo OT contra las operaciones pendientes
+        for entry in ops_to_apply:
+            remote_op = entry.get("OP")
+            if op_is_none(remote_op):
+                continue
+            
+            remote_op = self.transform_remote_against_pending(remote_op)
+            #TODO: puede cambiarse
+            if not op_is_none(remote_op):
+                self.doc = apply_op(self.doc, remote_op)
 
-def print_help():
-    print("\n")
-    print("Comandos disponibles:")
-    print("  insert <pos> <texto>  - Insertar texto en posicion")
-    print("  insert <pos>          - Insertar espacio en posicion")
-    print("  delete <pos>          - Eliminar caracter en posicion")
-    print("  crash                 - Simular desconexion")
-    print("  reconnect             - Reconectar al servidor")
-    print("  exit                  - Salir del programa")
-    print("\n")
+        self.server_rev = server_final_rev
+        print(f"[Cliente] Sincronización completa. Documento:\n  '{self.doc}'")
+        print(f"[Cliente] Revisión actual: {self.server_rev}\n")
+
+        self.waitting_ack = False
+        self.send_next_operation()
 
 
 
-def main():
-    global exit_loop, client_socket, offline
+    def handle_remote_operation(self, data_json):
+        remote_op = data_json.get("OP")
+        self.server_rev = data_json.get("REVISION", self.server_rev)
 
-    client_socket = socket(AF_INET, SOCK_STREAM)
-    client_socket.connect((HOST, PORT))
+        print(f"\n[Servidor] Operacion remota: {remote_op} Revision: {self.server_rev}\n")
 
-    send_msg(client_socket, {"TYPE":"GET_DOC"})  
+        # transformar operacion remota con las op pendientes
+        remote_op = self.transform_remote_against_pending(remote_op)
 
-    print_help()
+        # aplico remota si no es None
+        if not op_is_none(remote_op):
+            self.doc = apply_op(self.doc, remote_op)
+            print(f"[Cliente] Documento actualizado:\n {self.doc}")
+        else:
+            print("[Cliente] Operacion remota anulada (KIND='None'), no se aplica.")
 
-    while not exit_loop:
 
-        readers = [sys.stdin]
-        if not offline and client_socket is not None and client_socket.fileno() >= 0:
-            readers.append(client_socket)
-        # pongo como parametro el 1 segundo para que salga del for
-        read, _, _ = select.select(readers, [], [], 1.0)
+    def handle_ack(self, data_json):
+        if not self.pending:
+            print("[Cliente] ACK inesperado (no hay operaciones pendientes)")
+            self.waitting_ack = False
+            return
 
-        for sock in read:
-            if sock == client_socket:
-                handle_server_message(client_socket)
+        self.server_rev = data_json.get("REVISION", self.server_rev)
+
+        confirmed = self.pending.pop(0)
+        print(f"[Cliente] ACK recibido para: {confirmed.op}")
+
+        self.waitting_ack = False
+        self.send_next_operation()
+
+    def execute_operation(self, kind, pos, msg=None):
+        if self.client_id < 0:
+            print("[Cliente] Todavía no tengo ID del servidor.")
+            return
+
+        op = {"KIND": kind, "POS": pos, "ID": self.client_id, "SEQ_NUM": self.next_seq}
+        self.next_seq += 1
+        if msg is not None:
+            op["MSG"] = msg
+
+        # aplico localmente
+        self.doc = apply_op(self.doc, op)
+        print(f"\n[Cliente] Documento local:\n {self.doc}")
+
+        self.pending.append(Pending(self.server_rev, op))
+
+        if not self.offline:
+            self.send_next_operation()
+
+
+    def handle_client_input(self):
+        user_input = sys.stdin.readline().strip()
+
+        if user_input == "exit":
+            self.exit_loop = True
+            return
+
+        if user_input == "crash":
+            print("\n[Cliente] Simulando desconexion forzada...")
+            self.disconnect()
+            print("[Cliente] Desconectado. Usa 'reconnect' para reconectar.\n")
+            return
+
+        if user_input == "reconnect":
+            if not self.offline:
+                print("[Cliente] Ya estas conectado")
             else:
-                handle_client_input(client_socket)
+                self.reconnect_to_server()
+            return
 
-    disconnect()
-    print("[Cliente] Cliente desconectado.")
+        parts = user_input.split(" ")
+        if not parts or not parts[0]:
+            print("[Cliente] Comando vacio")
+            return
+
+        cmd = parts[0]
+        if cmd == "insert" and len(parts) >= 2 and parts[1].isdigit():
+            pos = int(parts[1])
+            msg_text = " " if len(parts) == 2 else parts[2]
+            self.execute_operation("insert", pos, msg_text)
+            return
+
+        if cmd == "delete" and len(parts) == 2 and parts[1].isdigit():
+            pos = int(parts[1])
+            self.execute_operation("delete", pos)
+            return
+
+        print("[Cliente] Comando invalido.")
+        self.print_help()
+
+
+    def print_help(self):
+        print("\nComandos disponibles:")
+        print("  insert <pos> <texto>  - Insertar texto en posicion")
+        print("  insert <pos>          - Insertar espacio en posicion")
+        print("  delete <pos>          - Eliminar caracter en posicion")
+        print("  crash                 - Simular desconexion")
+        print("  reconnect             - Reconectar al servidor")
+        print("  exit                  - Salir del programa\n")
+
+    def run(self):
+        self.connect()
+        self.print_help()
+
+        while not self.exit_loop:
+            readers = [sys.stdin]
+            if not self.offline and self.sock is not None and self.sock.fileno() >= 0:
+                readers.append(self.sock)
+
+            read, _, _ = select.select(readers, [], [], 1.0)
+
+            for r in read:
+                if self.sock is not None and r == self.sock:
+                    self.handle_server_message()
+                else:
+                    self.handle_client_input()
+
+        self.disconnect()
+        print("[Cliente] Cliente desconectado.")
 
 
 if __name__ == "__main__":
-    main()
+    Client().run()
