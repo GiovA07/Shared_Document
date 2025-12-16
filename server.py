@@ -19,18 +19,23 @@ SNAPSHOT_FILE = "snapshot.json"
 # ====== Archivo de estado (snapshot) ======
 def save_snapshot():
     with open(SNAPSHOT_FILE, "w", encoding="utf-8") as f:
-        json_data = {"DOC": doc, "REVISION": revision, "LOG": op_log}
+        json_data = {"DOC": doc, "REVISION": revision, "LOG": op_log, "LAST_NUM_SEQ": last_num_seq, "ID_CLIENTS": id_clients}
         json.dump(json_data, f)
 
 
 def load_snapshot():
-    global doc, revision, op_log
+    global doc, revision, op_log, last_num_seq, id_clients
     try:
         with open(SNAPSHOT_FILE, "r", encoding="utf-8") as f:
             state = json.load(f)
             doc = state["DOC"]
             revision = state["REVISION"]
             op_log = state["LOG"]
+            id_clients = int(state["ID_CLIENTS"])
+            
+            str_last_seq = state["LAST_NUM_SEQ"]
+            last_num_seq = {int(k): int(v) for k, v in str_last_seq.items()}
+
             print(f"[Servidor] Snapshot cargado: rev={revision}, len(doc)={len(doc)}")
     except FileNotFoundError:
         print("[Servidor] No hay snapshot previo.")
@@ -102,7 +107,6 @@ def handle_client(sock):
 
         if data:
             msg = json.loads(data.decode("utf-8").strip())
-            print(msg)
             msg_type = msg.get("TYPE")
             if msg_type == "GET_DOC":
                 send_initial_document(sock)
@@ -113,12 +117,11 @@ def handle_client(sock):
                 base_revision = msg.get("REVISION")
 
                 id_op = op.get("ID")
+
                 seq_num_op = op.get("SEQ_NUM")
+                prev_seq = last_num_seq.get(id_op, -1)
 
-                if last_num_seq.get(id_op) is None:
-                    last_num_seq[id_op] = -1
-
-                if last_num_seq.get(id_op) < seq_num_op:
+                if prev_seq < seq_num_op:
                     last_num_seq[id_op] = seq_num_op
                 else:
                     print("Operacion ya recibida")
