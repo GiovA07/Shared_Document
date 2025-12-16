@@ -15,18 +15,16 @@ def tii(op1, op2):
 
     if p1 < p2 or (p1 == p2 and p1_id < p2_id):
         return op1
-    else:
-        op1["POS"] = p1 + 1
-        return op1
+    op1["POS"] = p1 + 1
+    return op1
 
 def tid(op1, op2):
     p1 = int(op1["POS"])
     p2 = int(op2["POS"])
     if p1 <= p2:
         return op1
-    else:
-        op1["POS"] = p1 - 1
-        return op1
+    op1["POS"] = p1 - 1
+    return op1
 
 
 def tdi(op1, op2):
@@ -34,9 +32,8 @@ def tdi(op1, op2):
     p2 = int(op2["POS"])
     if p1 < p2:
         return op1
-    else:
-        op1["POS"] = p1 + 1
-        return op1
+    op1["POS"] = p1 + 1
+    return op1
 
 
 def tdd(op1, op2):
@@ -59,6 +56,7 @@ def transform(op1, op2):
     k1 = op1.get("KIND")
     k2 = op2.get("KIND")
 
+    op1 = op1.copy()
     if k1 == "insert" and k2 == "insert":
         return tii(op1, op2)
     elif k1 == "insert" and k2 == "delete":
@@ -68,4 +66,4 @@ def transform(op1, op2):
     elif k1 == "delete" and k2 == "delete":
         return tdd(op1, op2)
     else:
-        return op1.copy()
+        return op1

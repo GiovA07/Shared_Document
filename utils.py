@@ -1,6 +1,5 @@
 import json
 
-
 def send_msg(sock, msg):
     data = json.dumps(msg)
     sock.sendall((data + "\n").encode("utf-8"))
