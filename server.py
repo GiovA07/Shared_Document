@@ -115,10 +115,11 @@ def handle_client(sock):
                 time.sleep(10)
                 op = msg.get("OP")
                 base_revision = msg.get("REVISION")
-
-                id_op = op.get("ID")
-
-                seq_num_op = op.get("SEQ_NUM")
+                if op is None:
+                    send_ack(sock)
+                    return
+                id_op = op.get("ID", 0)
+                seq_num_op = op.get("SEQ_NUM", -1)
                 prev_seq = last_num_seq.get(id_op, -1)
 
                 if prev_seq < seq_num_op:
