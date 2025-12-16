@@ -71,6 +71,9 @@ def send_next_operation(sock):
 
     if offline or client_socket is None:
         return
+    
+    while pending_changes and pending_changes[0].get("OP") is None:
+        pending_changes.pop(0)
 
     if send_next and pending_changes:
         json_msg = pending_changes[0]
