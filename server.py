@@ -126,7 +126,6 @@ def handle_client(sock):
                     last_num_seq[id_op] = seq_num_op
                 else:
                     print("Operacion ya recibida")
-                    # nesesario para actualizar ack del cliente
                     send_ack(sock)
                     return
 
@@ -160,15 +159,8 @@ def handle_client(sock):
                     send_ack(sock)
                     print("[Server] La operacion no cambio el documento. IGNORADA.")
 
-            elif msg_type == "GET_LOG":
-                #cliente se reconecta y manda la ultima version de su archivo "revision"
-                rev_cliente = int(msg.get("REVISION"))
-                print(f"LLega {rev_cliente}")
-                ops = []
-                for op in op_log:
-                    if op["REVISION"] > rev_cliente and op["OP"]["ID"] != msg["ID"]:
-                        ops.append(op)
-                
+            elif msg_type == "GET_LOG":                
+                ops = op_log
                 reply = {
                     "TYPE": "LOG_RESTORAGE",
                     "REVISION": revision,

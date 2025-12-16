@@ -22,6 +22,9 @@ seq_num  = 0           # numero de sequencia para identificar si la operacion ya
 id_client = 0
 client_socket = None
 
+client_buffer = ""     # utilizado para almacenar mensajes de mas 4096
+
+
 
 # ====== Funciones de conexion ======
 def reconect_to_server():
@@ -83,14 +86,30 @@ def send_next_operation(sock):
 # ====== Manejo de mensajes del servidor ======
 def handle_log_restorage(data_json):
     global pending_changes, send_next, doc_copy, current_revision
+    
     operations_entry = data_json.get("OPERATIONS")
-    print(operations_entry)
+
     if not operations_entry:
         print("[Cliente] No hay operaciones nuevas en el servidor")
     else:
         print(f"[Cliente] Sincronizando con operaciones del servidor...")
     
-    for op_entry in operations_entry:
+
+    operation_entry_filer =[]
+    for operation in operations_entry:
+        # si op eracion ya esta en log entonces la borro de cambios pendientes
+        for op in pending_changes:    
+            if operation["OP"]["ID"] == id_client and operation["OP"]["SEQ_NUM"] == op["OP"]["SEQ_NUM"]:
+                pending_changes.pop(0)
+        
+        if operation["OP"]["ID"] == id_client and operation["OP"]["SEQ_NUM"] <= seq_num:            
+            continue
+        
+        if operation["REVISION"] > current_revision:
+            operation_entry_filer.append(operation)
+    
+    for op_entry in operation_entry_filer:
+        
         server_op = op_entry.get("OP")
         if server_op is None:
             continue
@@ -162,15 +181,34 @@ def handle_ack(data_json):
 
 
 def handle_server_message(sock):
-    global doc_copy, current_revision, send_next, pending_changes, offline, id_client
+    global doc_copy, current_revision, send_next, pending_changes, offline, id_client, client_buffer
 
-    data = sock.recv(4096)
+    try:
+        data = sock.recv(4096)
+    except:
+        data = None
+    
+    
     if not data:
         print("[Cliente] Servidor desconectado")
         disconnect()
         return
+    
+    client_buffer += data.decode("utf-8")
 
-    data_json = json.loads(data.decode("utf-8"))
+    while "\n" in client_buffer:
+        msg_str, resto = client_buffer.split("\n", 1)
+        client_buffer = resto
+        try:
+            data_json = json.loads(msg_str)
+            process_server_msg(data_json)
+        except:
+            print("Invalid JSON")    
+   
+    
+
+def process_server_msg(data_json):   
+    global doc_copy, current_revision, send_next, pending_changes, id_client
     msg_type = data_json.get("TYPE")
     # ---------- Documento inicial ----------
     if msg_type == "DOC_TYPE":
