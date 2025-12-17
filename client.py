@@ -220,15 +220,17 @@ class Client:
         self.server_rev = data_json.get("REVISION", self.server_rev)
         id_c = data_json.get("ID")
         seq_num_r = data_json.get("SEQ_NUM")
-
-        if (id_c == self.client_id and seq_num_r == self.pending[0].op.get("SEQ_NUM")):
+        expected = self.pending[0]
+        if (id_c == self.client_id and seq_num_r == expected.op.get("SEQ_NUM")):
             confirmed = self.pending.pop(0)
             print(f"[Cliente] ACK recibido para: {confirmed.op}")
     
             self.waitting_ack = False
             self.send_next_operation()
-        else:
-            print("[Cliente] ACK inesperado No corresponde al ID ni SEQUENCIA de la operacion enviada")
+        
+        print("[Cliente] ACK invalido: lo ignoro y reintento enviar la operacion.")
+        self.waitting_ack = False
+        self.send_next_operation()
 
 
     def execute_operation(self, kind, pos, msg=None):

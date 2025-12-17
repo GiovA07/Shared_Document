@@ -51,7 +51,7 @@ def apply_op(document, op):
         return document[:pos] + msg + document[pos:]
 
     elif kind == "delete":
-        if pos < 0 and pos > len(document):
+        if pos < 0 or pos >= len(document):
             return document
         return document[:pos] + document[pos + 1 :]
 
