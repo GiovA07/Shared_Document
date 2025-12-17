@@ -54,9 +54,11 @@ class Server:
         send_msg(sock, json_data)
         print("[Servidor] Documento inicial enviado a cliente")
 
-    def send_ack(self, sock):
+    def send_ack(self, sock, op):
         try:
             data = make_json(type="ACK", rev=self.revision)
+            data["ID"] = op.get("ID")
+            data["SEQ_NUM"] = op.get("SEQ_NUM")
             send_msg(sock, data)
         except Exception as e:
             print(f"[Servidor] Error al enviar ACK: {e}")
@@ -73,12 +75,12 @@ class Server:
             pass
         print("[Servidor] Cliente desconectado")
 
-    def broadcast(self, msg, origin_sock):
+    def broadcast(self, msg, origin_sock, op):
         for s in list(self.connections):
             if s == self.server_socket:
                 continue
             if s == origin_sock:
-                self.send_ack(s)
+                self.send_ack(s, op)
                 continue
             try:
                 send_msg(s, msg)
@@ -116,8 +118,8 @@ class Server:
         base_revision = int(msg.get("REVISION", 0))
 
         # TODO: PODEMOS BORRAR ESTO CREO
-        if op is None:
-            self.send_ack(sock)
+        if op_is_none(op):
+            self.send_ack(sock, op)
             return
 
         id_op = int(op.get("ID", 0))
@@ -128,14 +130,14 @@ class Server:
             self.last_num_seq[id_op] = seq_num_op
         else:
             print("[Servidor] Operacion duplicada, ACK para actualizar cliente")
-            self.send_ack(sock)
+            self.send_ack(sock, op)
             return
 
         print("[Cliente] Operacion:", op, "BASE_REVISION:", base_revision)
 
         # si la op ya es "None" entonces mandamos ack directamente
         if op_is_none(op):
-            self.send_ack(sock)
+            self.send_ack(sock, op)
             return
 
         # transform contra las operaciones en log con base_revision mayor
@@ -145,7 +147,7 @@ class Server:
 
                 # TODO: ver si borrarlo
                 if op_is_none(op):
-                    self.send_ack(sock)
+                    self.send_ack(sock, op)
                     return
 
         # aplicar
@@ -161,9 +163,9 @@ class Server:
             print(f"[Servidor] Nueva revisión: {self.revision}")
 
             operator_msg = make_json(type="OPERATOR", rev=self.revision, op=op)
-            self.broadcast(operator_msg, sock)
+            self.broadcast(operator_msg, sock, op)
         else:
-            self.send_ack(sock)
+            self.send_ack(sock, op)
             print("[Servidor] La operación no cambió el documento.")
 
 
