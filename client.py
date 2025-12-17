@@ -39,6 +39,9 @@ class Client:
         s = socket(AF_INET, SOCK_STREAM)
         s.connect((HOST, PORT))
 
+        # id del cliente
+        self.client_id = s.getsockname()[1]
+        
         self.sock = s
         self.offline = False
         
@@ -124,7 +127,6 @@ class Client:
         msg_type = data_json.get("TYPE")
 
         if msg_type == "DOC_TYPE":
-            self.client_id = data_json.get("ID", -1)
             self.doc = data_json.get("DOC", "")
             self.server_rev = data_json.get("REVISION", 0)
 
@@ -224,10 +226,7 @@ class Client:
         self.send_next_operation()
 
     def execute_operation(self, kind, pos, msg=None):
-        if self.client_id < 0:
-            print("[Cliente] Todavía no tengo ID del servidor.")
-            return
-
+        
         op = {"KIND": kind, "POS": pos, "ID": self.client_id, "SEQ_NUM": self.next_seq}
         self.next_seq += 1
         if msg is not None:
