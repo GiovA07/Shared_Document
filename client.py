@@ -3,7 +3,7 @@ import sys
 import select
 import json
 import time
-from utils import send_msg, make_json, apply_op, op_is_none
+from utils import send_msg, make_json, apply_op, op_is_none, recv_packet_buffer
 from ot import transform
 
 
@@ -99,33 +99,19 @@ class Client:
             self.disconnect()
 
     def handle_server_message(self):
-        try:
-            data = self.sock.recv(4096)
-        except:
-            data = None
+        msgs, new_buffer, connected = recv_packet_buffer(self.sock, self.client_buffer)
+        self.client_buffer = new_buffer
 
-        if not data:
-            print("[Cliente] Servidor desconectado")
+        if not connected:
+            print("[Cliente] El servidor cerró la conexión.")
             self.disconnect()
             return
 
-        self.client_buffer += data.decode("utf-8")
-
-        while "\n" in self.client_buffer:
-            msg_str, resto = self.client_buffer.split("\n", 1)
-            self.client_buffer = resto
-            msg_str = msg_str.strip()
-            if not msg_str:
-                continue
-            try:
-                data_json = json.loads(msg_str)
-                self.process_server_msg(data_json)
-            except:
-                print("[Cliente] Invalid JSON")
+        for msg in msgs:
+            self.process_server_msg(msg)
 
     def process_server_msg(self, data_json):
         msg_type = data_json.get("TYPE")
-
         if msg_type == "DOC_TYPE":
             self.doc = data_json.get("DOC", "")
             self.server_rev = data_json.get("REVISION", 0)

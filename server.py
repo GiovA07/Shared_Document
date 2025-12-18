@@ -1,7 +1,7 @@
 import socket, select
 import json
 import time
-from utils import send_msg, make_json, apply_op, op_is_none
+from utils import send_msg, make_json, apply_op, op_is_none, recv_packet_buffer
 from ot import transform
 
 class Server:
@@ -113,7 +113,6 @@ class Server:
         send_msg(sock, reply)
 
     def handle_operator(self, sock, msg):
-        # time.sleep(3)          #Latencia
         op = msg.get("OP")
         base_revision = int(msg.get("REVISION", 0))
 
@@ -169,25 +168,29 @@ class Server:
             print("[Servidor] La operación no cambió el documento.")
 
 
-    def handle_client(self,sock):
-        try:
-            data = sock.recv(4096)
-        except Exception as e:
-            print(f"[Servidor] Error con cliente: {e}")
-            self.close_connection(sock)
-            return
+    def handle_client_data(self, sock):
+        if sock not in self.buffers:
+            self.buffers[sock] = ""
+        
+        current_buff = self.buffers[sock]
+        msgs, new_buff, connected = recv_packet_buffer(sock, current_buff)
+        self.buffers[sock] = new_buff
 
-        if not data:
+        if not connected:
             self.close_connection(sock)
             return
-        msg = json.loads(data.decode("utf-8").strip())
-        msg_type = msg.get("TYPE")
+        
+        for msg in msgs:
+            self.process_client_msg(sock, msg)
+
+    def process_client_msg(self, sock, data_json):
+        msg_type = data_json.get("TYPE")
         if msg_type == "GET_DOC":
             self.send_initial_document(sock)
         elif msg_type == "OPERATOR":
-            self.handle_operator(sock, msg)
+            self.handle_operator(sock, data_json)
         elif msg_type == "GET_LOG":
-            self.handle_get_log(sock, msg)
+            self.handle_get_log(sock, data_json)
         else:
             print(f"[Servidor] Tipo de mensaje invalido: {msg_type}")
 
@@ -207,7 +210,7 @@ class Server:
                 if s == self.server_socket:
                     self.handle_new_connection()
                 else:
-                    self.handle_client(s)
+                    self.handle_client_data(s)
 
 if __name__ == "__main__":
     Server().run()

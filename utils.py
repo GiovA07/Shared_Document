@@ -57,3 +57,32 @@ def apply_op(document, op):
 
     else:  # operacion que no existe
         return document
+    
+
+def recv_packet_buffer(sock, buffer):
+    try:
+        data = sock.recv(4096)
+    except Exception:
+        return [], buffer, False 
+
+    if not data:
+        return [], buffer, False
+
+    buffer += data.decode("utf-8")
+    messages = []
+
+    while "\n" in buffer:
+        msg_str, resto = buffer.split("\n", 1)
+        buffer = resto
+        
+        msg_str = msg_str.strip()
+        if not msg_str:
+            continue
+            
+        try:
+            json_obj = json.loads(msg_str)
+            messages.append(json_obj)
+        except json.JSONDecodeError:
+            print(f"[Utils] JSON corrupto ignorado: {msg_str}")
+
+    return messages, buffer, True
