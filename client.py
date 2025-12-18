@@ -227,6 +227,7 @@ class Client:
     
             self.waitting_ack = False
             self.send_next_operation()
+            return
         
         print("[Cliente] ACK invalido: lo ignoro y reintento enviar la operacion.")
         self.waitting_ack = False
@@ -260,7 +261,7 @@ class Client:
         if user_input == "crash":
             print("\n[Cliente] Simulando desconexion forzada...")
             self.disconnect()
-            print("[Cliente] Desconectado. Usa 'reconnect' para reconectar.\n")
+            print("[Cliente] Usa 'reconnect' para reconectar.\n")
             return
 
         if user_input == "reconnect":
@@ -318,8 +319,6 @@ class Client:
                     self.handle_client_input()
 
         self.disconnect()
-        print("[Cliente] Cliente desconectado.")
-
 
 if __name__ == "__main__":
     Client().run()

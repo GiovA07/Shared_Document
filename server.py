@@ -113,7 +113,7 @@ class Server:
         send_msg(sock, reply)
 
     def handle_operator(self, sock, msg):
-        time.sleep(10)          #Latencia
+        # time.sleep(3)          #Latencia
         op = msg.get("OP")
         base_revision = int(msg.get("REVISION", 0))
 
