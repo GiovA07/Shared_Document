@@ -151,21 +151,29 @@ class Client:
         print("[Cliente] Sincronizando con operaciones del servidor...")
 
         # filtra ops realmente nuevas
-        ops_to_apply = []
-        for entry in operations_entry:
-            entry_op = entry.get("OP")
-            if self.pending and entry_op.get("ID") == self.client_id and entry_op.get("SEQ_NUM") == self.pending[0].op["SEQ_NUM"]:
-                self.pending.pop(0)
+        # ops_to_apply = []
+        # for entry in operations_entry:
+        #     entry_op = entry.get("OP")
+        #     if self.pending and entry_op.get("ID") == self.client_id and entry_op.get("SEQ_NUM") == self.pending[0].op["SEQ_NUM"]:
+        #         self.pending.pop(0)
 
-            if  entry_op.get("ID") != self.client_id:
-                ops_to_apply.append(entry)
+        #     if  entry_op.get("ID") != self.client_id:
+        #         ops_to_apply.append(entry)
 
         # aplico una por una, haciendo OT contra las operaciones pendientes
-        for entry in ops_to_apply:
+        for entry in operations_entry:
             remote_op = entry.get("OP")
             if op_is_none(remote_op):
                 continue
             
+            entry_op = entry.get("OP")
+
+            if self.pending and entry_op.get("ID") == self.client_id and entry_op.get("SEQ_NUM") == self.pending[0].op["SEQ_NUM"]:
+                self.pending.pop(0)
+
+            if  entry_op.get("ID") == self.client_id:
+                continue
+
             remote_op = self.transform_remote_against_pending(remote_op)
             #TODO: puede cambiarse
             if not op_is_none(remote_op):

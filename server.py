@@ -113,6 +113,7 @@ class Server:
         send_msg(sock, reply)
 
     def handle_operator(self, sock, msg):
+        time.sleep(2)
         op = msg.get("OP")
         base_revision = int(msg.get("REVISION", 0))
 
