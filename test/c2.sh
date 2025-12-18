@@ -4,7 +4,7 @@ sleep 4
 echo "insert 0 G"
 echo "delete 0"
 echo "insert 2 H"
-sleep 4.5
+sleep 4
 echo "insert 0 Z"
-sleep 20
+sleep 25
 echo "exit"
