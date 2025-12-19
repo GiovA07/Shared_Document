@@ -48,9 +48,15 @@ python3 client.py
 
 # Protocolo de mensajes con TCP
 
-1. Mensaje inicial, documento actual.
-Al conectarse, el servidor envía al cliente el estado actual del documento:
-  
+1. Al conectarse un cliente nuevo le envia al servidor un mensaje solcitandole el documento actual:
+```json
+{
+  "TYPE": "GET_DOC"
+}
+```
+
+3. Mensaje inicial, documento actual.
+El servidor le respone con el numero de revision hasta el momento y el documento actual.  
 ```json
 {
  "TYPE": "DOC_TYPE",
@@ -61,7 +67,7 @@ Al conectarse, el servidor envía al cliente el estado actual del documento:
 Este mensaje actúa como una "snapshot" del documento indicando el numero de revisión hasta el momento.
   
 
-2. Envío de una operación desde el cliente
+4. Envío de una operación desde el cliente
 
 ```json
 {
@@ -71,15 +77,17 @@ Este mensaje actúa como una "snapshot" del documento indicando el numero de rev
 	 "KIND": "insert",
 	 "POS": 3,
 	 "MSG": "X",
-	 "ID": 70133
+	 "ID": 70133,
+   "SEQ_NUM": 1
 	}
 }
+
 ```
 - REVISION indica la revisión base sobre la cual se generó la operación.
 - ID identifica al cliente y se utiliza para desempatar inserciones concurrentes.
 
 
-3. Broadcast de una operación desde el servidor
+5. Broadcast de una operación desde el servidor
 El servidor aplica la operación (luego de transformarla) y la reenvía a todos los clientes:
 ```json
 {
@@ -87,30 +95,35 @@ El servidor aplica la operación (luego de transformarla) y la reenvía a todos 
  "REVISION": 0,
  "OP": {
       "KIND": "delete",
-	  "POS": 2
+	    "POS": 2,
+      "ID": 70133,
+      "SEQ_NUM": 7
 	}
 }
 ```
   
 
-4. ACK al cliente origen (quien envio la operacion)
+6. ACK al cliente origen (quien envio la operacion)
 El servidor responde al cliente que originó la operación.
 El ACK confirma que la operación fue agregada con exito al documento global.
 ```json
 {
  "TYPE": "ACK",
- "REVISION": 1
+ "REVISION": 1,
+ "ID": 70133,
+ "SEQ_NUM": 1
 }
 ```
 
-5. Solicitud de sincronizacion / reconexion
+7. Solicitud de sincronizacion / reconexion
 
 Cuando un cliente el cual perdio la conexion se reconecta, solicita al servidor las operaciones que ocurrieron mientras estuvo offline:
 
 ```json
 {
  "TYPE": "GET_LOG",
- "REVISION": 3
+ "REVISION": 3,
+ "ID": 70133
 }
 ```
 El campo `REVISION` le informa al servidor cuales deberian ser las operaciones a mandarle para que el cliente pueda aplicarlas y el documento quede consistente con el original.
@@ -165,6 +178,25 @@ Luego de la transformación, las operaciones se aplican secuencialmente al docum
 # Tolerancia a fallas
 
 El sistema contempla fallas tanto del lado del cliente como del servidor.
+
+## Detección de duplicados (ID + SEQ_NUM)
+
+Cada operación local se numera con `SEQ_NUM` creciente por cliente.
+El servidor mantiene `LAST_NUM_SEQ[client_id]` y descarta operaciones duplicadas
+(o reenvíos) respondiendo con `ACK` para que el cliente pueda avanzar.
+
+Esto evita aplicar dos veces la misma operación ante retransmisiones o reconexiones.
+
+## Persistencia del servidor (snapshot)
+
+El servidor guarda el estado en `snapshot.json` con:
+
+- `DOC`: documento actual
+- `REVISION`: revisión global
+- `LOG`: log de operaciones aplicadas con su revisión
+- `LAST_NUM_SEQ`: último `SEQ_NUM` visto por cliente (deduplicación)
+
+Al reiniciar, el servidor carga este snapshot y continúa desde ese estado.
 
 ## Fallas de clientes (offline work)
 
